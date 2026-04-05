@@ -1,189 +1,586 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0B1426" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="EduAttend" />
+  <meta name="description" content="EduAttend — School Attendance Management" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <title>EduAttend - School Attendance</title>
 
-    <!-- ── PWA / Theme ── -->
-    <meta name="theme-color" content="#0F172A" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="EduAttend" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 
-    <!-- ── SEO / Description ── -->
-    <meta name="description" content="EduAttend — Role-based school attendance management for teachers, admin, and principals." />
-    <meta name="application-name" content="EduAttend" />
+  <!-- React 18 + Babel standalone (no build step needed) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- ── Manifest ── -->
-    <link rel="manifest" href="./manifest.json" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body,#root{width:100%;height:100%;background:#0B1426;font-family:'Nunito','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+    ::-webkit-scrollbar{display:none}
+    *{scrollbar-width:none;-ms-overflow-style:none}
+    input,select,textarea,button{font-family:'Nunito','Segoe UI',sans-serif;-webkit-appearance:none;appearance:none}
+    body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
 
-    <!-- ── Icons ── -->
-    <!-- Standard favicon -->
-    <link rel="icon"             type="image/svg+xml"  href="./icon.svg" />
-    <link rel="icon"             type="image/png" sizes="192x192" href="./icon-192.png" />
-    <!-- Apple touch icons -->
-    <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png" />
-    <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png" />
+<script type="text/babel" data-presets="react">
+const{useState,useMemo}=React;
 
-    <!-- ── Apple splash screens (optional, enhances iOS PWA feel) ── -->
-    <!--
-    <link rel="apple-touch-startup-image" href="./splash-750x1334.png"
-          media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" />
-    -->
+/* ── THEME ── */
+const T={bg:'#0B1426',surface:'#111F35',card:'#162236',card2:'#1C2D44',border:'#1E3A5F',border2:'#243B5E',text:'#F0F6FF',sub:'#94A3B8',muted:'#4A6080',accent:'#38BDF8',indigo:'#818CF8',green:'#34D399',red:'#F87171',yellow:'#FBBF24',orange:'#FB923C'};
 
-    <title>EduAttend - School Attendance</title>
+/* ── USERS ── */
+const USERS={admin:{pw:'admin123',role:'admin',name:'Administrator',color:T.indigo},teacher1:{pw:'teach001',role:'teacher',name:'Ms. Priya Sharma',color:T.accent},teacher2:{pw:'teach002',role:'teacher',name:'Mr. Rahul Verma',color:T.accent},teacher3:{pw:'teach003',role:'teacher',name:'Ms. Anjali Patel',color:T.accent},principal:{pw:'prin456',role:'principal',name:'Dr. S. Mehta',color:T.yellow}};
 
-    <!-- ── Nunito Font ── -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+/* ── DATE UTILS ── */
+const pad=n=>String(n).padStart(2,'0');
+const dateKey=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayKey=()=>dateKey(new Date());
+const isSunday=str=>new Date(str+'T12:00:00').getDay()===0;
+const fmtDate=str=>new Date(str+'T12:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+const monthLabel=(y,m)=>new Date(y,m,1).toLocaleString('en-IN',{month:'long',year:'numeric'});
+const daysInMonth=(y,m)=>new Date(y,m+1,0).getDate();
+const monthDateKeys=(y,m)=>Array.from({length:daysInMonth(y,m)},(_,i)=>dateKey(new Date(y,m,i+1)));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const getWorkingDays=(y,m,holidays)=>{const hSet=new Set(holidays.map(h=>h.date));return monthDateKeys(y,m).filter(d=>!isSunday(d)&&!hSet.has(d));};
 
-    <style>
-      /* ── Reset & base ── */
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── LOCAL STORAGE ── */
+function useLs(key,init){
+  const[v,setV]=useState(()=>{try{const s=localStorage.getItem(key);return s?JSON.parse(s):init;}catch{return init;}});
+  const set=val=>setV(prev=>{const next=typeof val==='function'?val(prev):val;try{localStorage.setItem(key,JSON.stringify(next));}catch{}return next;});
+  return[v,set];
+}
 
-      html, body {
-        width: 100%;
-        height: 100%;
-        background: #0F172A;
-        font-family: 'Nunito', 'Segoe UI', sans-serif;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        overscroll-behavior: none;
-      }
+/* ── UI HELPERS ── */
+const SS={minHeight:'100dvh',background:T.bg,fontFamily:"'Nunito',sans-serif",color:T.text,overflowX:'hidden'};
+const pctColor=p=>p===null?T.muted:p>=75?T.green:p>=50?T.yellow:T.red;
 
-      #root {
-        width: 100%;
-        height: 100%;
-      }
+function Btn({children,onClick,color=T.accent,text=T.bg,outline=false,full=false,sm=false,disabled=false,style={}}){
+  return<button onClick={onClick} disabled={disabled} style={{background:outline?'transparent':disabled?T.muted:color,color:outline?color:disabled?T.surface:text,border:outline?`1.5px solid ${disabled?T.muted:color}`:'none',borderRadius:10,padding:sm?'7px 14px':'11px 22px',fontWeight:800,fontSize:sm?12:14,cursor:disabled?'not-allowed':'pointer',fontFamily:"'Nunito',sans-serif",width:full?'100%':undefined,opacity:disabled?.55:1,letterSpacing:'0.02em',...style}}>{children}</button>;
+}
 
-      /* ── Scrollbar hide (clean mobile feel) ── */
-      ::-webkit-scrollbar { display: none; }
-      * { scrollbar-width: none; -ms-overflow-style: none; }
+function Inp({label,value,onChange,type='text',placeholder=''}){
+  return<div style={{marginBottom:14}}>
+    {label&&<label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>{label}</label>}
+    <input type={type} value={value} placeholder={placeholder} onChange={e=>onChange(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',boxSizing:'border-box'}}/>
+  </div>;
+}
 
-      /* ── Input / select native reset ── */
-      input, select, textarea, button {
-        font-family: 'Nunito', 'Segoe UI', sans-serif;
-        -webkit-appearance: none;
-        appearance: none;
-      }
-
-      /* ── Safe-area support (iPhone notch / Android cutout) ── */
-      body {
-        padding-top:    env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
-        padding-left:   env(safe-area-inset-left);
-        padding-right:  env(safe-area-inset-right);
-      }
-
-      /* ── PWA install banner (hidden by default, shown via JS) ── */
-      #pwa-install-banner {
-        display: none;
-        position: fixed;
-        bottom: 16px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9999;
-        background: #1E293B;
-        border: 1px solid #38BDF8;
-        border-radius: 14px;
-        padding: 12px 20px;
-        color: #F1F5F9;
-        font-family: 'Nunito', sans-serif;
-        font-size: 14px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        white-space: nowrap;
-      }
-      #pwa-install-banner button {
-        background: linear-gradient(135deg, #38BDF8, #818CF8);
-        color: #0F172A;
-        border: none;
-        border-radius: 8px;
-        padding: 6px 14px;
-        font-weight: 800;
-        cursor: pointer;
-        font-size: 13px;
-      }
-      #pwa-install-banner .close-btn {
-        background: transparent;
-        color: #94A3B8;
-        font-size: 18px;
-        padding: 0 4px;
-        line-height: 1;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-
-    <!-- ── PWA Install Banner ── -->
-    <div id="pwa-install-banner">
-      📋 Add EduAttend to Home Screen
-      <button id="pwa-install-btn">Install</button>
-      <button class="close-btn" id="pwa-close-btn">✕</button>
+function Modal({open,onClose,title,children}){
+  if(!open)return null;
+  return<div style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
+    <div style={{background:T.card2,borderRadius:'22px 22px 0 0',border:`1px solid ${T.border}`,borderBottom:'none',padding:'24px 20px 36px',width:'100%',maxWidth:520,maxHeight:'90dvh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <span style={{fontSize:18,fontWeight:900,color:T.text}}>{title}</span>
+        <button onClick={onClose} style={{background:'none',border:'none',color:T.sub,fontSize:22,cursor:'pointer',lineHeight:1}}>✕</button>
+      </div>
+      {children}
     </div>
+  </div>;
+}
 
-    <!-- ── React App Entry ── -->
-    <script type="module" src="/src/main.jsx"></script>
+function Badge({children,color=T.accent}){return<span style={{background:color+'22',color,border:`1px solid ${color}44`,borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:800,letterSpacing:'0.04em'}}>{children}</span>;}
 
-    <!-- ── Service Worker Registration ── -->
-    <script>
-      /* ─── Register Service Worker ─── */
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker
-            .register('./sw.js', { scope: './' })
-            .then((reg) => {
-              console.log('[PWA] Service worker registered. Scope:', reg.scope);
-            })
-            .catch((err) => {
-              console.error('[PWA] Service worker registration failed:', err);
-            });
-        });
+function Header({user,onLogout}){
+  const rLabel={admin:'ADMIN',teacher:'TEACHER',principal:'PRINCIPAL'}[user.role];
+  return<div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:'13px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:200}}>
+    <div>
+      <div style={{fontSize:20,fontWeight:900,color:T.accent,letterSpacing:'-0.5px'}}>📋 EduAttend</div>
+      <div style={{fontSize:12,color:T.sub,marginTop:1}}>{user.name}</div>
+    </div>
+    <div style={{display:'flex',alignItems:'center',gap:10}}>
+      <Badge color={user.color}>{rLabel}</Badge>
+      <button onClick={onLogout} style={{background:'none',border:`1.5px solid ${T.border2}`,color:T.sub,borderRadius:8,padding:'6px 12px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>Logout</button>
+    </div>
+  </div>;
+}
+
+function TabBar({tabs,active,onChange}){
+  return<div style={{display:'flex',background:T.surface,borderTop:`1px solid ${T.border}`,position:'fixed',bottom:0,left:0,right:0,zIndex:200}}>
+    {tabs.map(t=>{const on=t.id===active;return<button key={t.id} onClick={()=>onChange(t.id)} style={{flex:1,background:'none',border:'none',borderTop:`2.5px solid ${on?T.accent:'transparent'}`,color:on?T.accent:T.muted,padding:'9px 4px 7px',fontSize:10,fontWeight:800,letterSpacing:'0.04em',cursor:'pointer',fontFamily:"'Nunito',sans-serif",display:'flex',flexDirection:'column',alignItems:'center',gap:3}}>
+      <span style={{fontSize:22}}>{t.icon}</span>{t.label}
+    </button>;})}
+  </div>;
+}
+
+function Stat({value,label,color=T.text}){return<div style={{textAlign:'center'}}><div style={{fontSize:24,fontWeight:900,color}}>{value}</div><div style={{fontSize:10,color:T.sub,fontWeight:700,marginTop:2}}>{label}</div></div>;}
+
+function MonthNav({y,m,onChange}){
+  return<div style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'12px 18px',marginBottom:16}}>
+    <button onClick={()=>onChange(m===0?{y:y-1,m:11}:{y,m:m-1})} style={{background:'none',border:'none',color:T.accent,cursor:'pointer',fontSize:26,lineHeight:1}}>‹</button>
+    <span style={{fontWeight:900,fontSize:16,color:T.text}}>{monthLabel(y,m)}</span>
+    <button onClick={()=>onChange(m===11?{y:y+1,m:0}:{y,m:m+1})} style={{background:'none',border:'none',color:T.accent,cursor:'pointer',fontSize:26,lineHeight:1}}>›</button>
+  </div>;
+}
+
+function WDStrip({y,m,holidays}){
+  const all=monthDateKeys(y,m),suns=all.filter(isSunday).length;
+  const hSet=new Set(holidays.map(h=>h.date)),hols=all.filter(d=>!isSunday(d)&&hSet.has(d)).length;
+  return<div style={{display:'flex',justifyContent:'space-around',background:`linear-gradient(135deg,${T.accent}15,${T.indigo}15)`,border:`1px solid ${T.accent}33`,borderRadius:14,padding:'14px 10px',marginBottom:16}}>
+    <Stat value={all.length} label="TOTAL" color={T.text}/><Stat value={suns} label="SUNDAYS" color={T.indigo}/><Stat value={hols} label="HOLIDAYS" color={T.yellow}/><Stat value={all.length-suns-hols} label="WORKING" color={T.green}/>
+  </div>;
+}
+
+function PctBar({pct}){const c=pctColor(pct);return<div style={{background:T.surface,borderRadius:6,height:8,marginTop:8,marginBottom:8}}><div style={{background:`linear-gradient(90deg,${c},${c}99)`,width:`${pct||0}%`,height:'100%',borderRadius:6,transition:'width .6s'}}/></div>;}
+
+/* ════════════════════════════════════════
+   LOGIN
+════════════════════════════════════════ */
+function LoginScreen({onLogin}){
+  const[uname,setUname]=useState('');
+  const[pw,setPw]=useState('');
+  const[show,setShow]=useState(false);
+  const[err,setErr]=useState('');
+  const handle=()=>{const u=USERS[uname.trim()];if(!u){setErr('Username not found');return;}if(u.pw!==pw){setErr('Incorrect password');return;}setErr('');onLogin(uname.trim(),u);};
+  return<div style={{...SS,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,background:`radial-gradient(ellipse at 25% 15%, #1A3A60 0%, ${T.bg} 55%)`}}>
+    <div style={{marginBottom:36,textAlign:'center'}}>
+      <div style={{width:86,height:86,borderRadius:24,background:`linear-gradient(135deg,${T.accent},${T.indigo})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:42,margin:'0 auto 16px',boxShadow:`0 16px 48px ${T.accent}44`}}>📋</div>
+      <div style={{fontSize:34,fontWeight:900,color:T.text,letterSpacing:'-1px'}}>EduAttend</div>
+      <div style={{fontSize:14,color:T.sub,marginTop:4}}>School Attendance System</div>
+    </div>
+    <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:20,padding:28,width:'100%',maxWidth:380,boxShadow:`0 24px 64px rgba(0,0,0,.5)`}}>
+      <Inp label="Username" value={uname} onChange={setUname} placeholder="admin / teacher1 / principal"/>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Password</label>
+        <div style={{position:'relative'}}>
+          <input type={show?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handle()} placeholder="Enter password"
+            style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 44px 11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',boxSizing:'border-box'}}/>
+          <button onClick={()=>setShow(!show)} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:18,color:T.sub}}>{show?'🙈':'👁️'}</button>
+        </div>
+      </div>
+      {err&&<div style={{color:T.red,fontSize:13,fontWeight:700,marginBottom:12,textAlign:'center'}}>{err}</div>}
+      <Btn onClick={handle} full>Sign In →</Btn>
+    </div>
+    <div style={{marginTop:24,background:`${T.card}99`,border:`1px solid ${T.border}`,borderRadius:14,padding:16,width:'100%',maxWidth:380}}>
+      <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:10,letterSpacing:'0.06em'}}>DEMO CREDENTIALS — tap to auto-fill</div>
+      {Object.entries(USERS).map(([un,u])=>(
+        <div key={un} onClick={()=>{setUname(un);setPw(u.pw);}} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 8px',borderRadius:8,cursor:'pointer',marginBottom:2}}
+          onMouseEnter={e=>e.currentTarget.style.background=T.surface} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <span style={{fontSize:13,fontWeight:700,color:T.text,width:90}}>{un}</span>
+          <span style={{fontSize:13,color:T.sub,fontFamily:'monospace',flex:1}}>{u.pw}</span>
+          <Badge color={u.color}>{u.role.slice(0,5).toUpperCase()}</Badge>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   ADMIN — CLASSES
+════════════════════════════════════════ */
+function AdminClasses({classes,setClasses}){
+  const[showNew,setShowNew]=useState(false);
+  const[clsName,setClsName]=useState('');
+  const[expanded,setExpanded]=useState(null);
+  const[newSt,setNewSt]=useState('');
+  const createClass=()=>{if(!clsName.trim())return;setClasses(p=>[...p,{id:uid(),name:clsName.trim(),students:[]}]);setClsName('');setShowNew(false);};
+  const deleteClass=id=>{if(!window.confirm('Delete this class?'))return;setClasses(p=>p.filter(c=>c.id!==id));};
+  const addStudent=cid=>{if(!newSt.trim())return;setClasses(p=>p.map(c=>c.id===cid?{...c,students:[...c.students,{id:uid(),name:newSt.trim()}]}:c));setNewSt('');};
+  const removeStudent=(cid,sid)=>setClasses(p=>p.map(c=>c.id===cid?{...c,students:c.students.filter(s=>s.id!==sid)}:c));
+  return<div>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+      <div style={{fontSize:20,fontWeight:900,color:T.text}}>Classes</div>
+      <Btn sm onClick={()=>setShowNew(true)} color={T.green} text={T.bg}>+ New Class</Btn>
+    </div>
+    {classes.length===0&&<div style={{textAlign:'center',padding:'50px 0',background:T.card,border:`1px dashed ${T.border2}`,borderRadius:16}}><div style={{fontSize:40,marginBottom:12}}>🏫</div><div style={{color:T.sub,fontSize:14}}>No classes yet.</div></div>}
+    {classes.map(cls=>{
+      const isOpen=expanded===cls.id;
+      return<div key={cls.id} style={{background:T.card,border:`1px solid ${isOpen?T.accent:T.border}`,borderRadius:16,marginBottom:12,overflow:'hidden'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'15px 18px',cursor:'pointer'}} onClick={()=>setExpanded(isOpen?null:cls.id)}>
+          <div><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:12,color:T.sub,marginTop:2}}>{cls.students.length} student{cls.students.length!==1?'s':''}</div></div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}><Badge color={T.accent}>{cls.students.length}</Badge><span style={{color:T.sub,fontSize:18}}>{isOpen?'▲':'▼'}</span></div>
+        </div>
+        {isOpen&&<div style={{borderTop:`1px solid ${T.border}`,padding:'16px 18px'}}>
+          {cls.students.length===0&&<div style={{color:T.muted,fontSize:13,textAlign:'center',marginBottom:12}}>No students yet</div>}
+          {cls.students.map((s,i)=>(
+            <div key={s.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${T.border}33`}}>
+              <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                <div style={{width:28,height:28,borderRadius:'50%',background:`linear-gradient(135deg,${T.accent}44,${T.indigo}44)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:T.accent}}>{i+1}</div>
+                <span style={{fontSize:14,color:T.text,fontWeight:600}}>{s.name}</span>
+              </div>
+              <button onClick={()=>removeStudent(cls.id,s.id)} style={{background:'none',border:'none',color:T.red,cursor:'pointer',fontSize:18,lineHeight:1,padding:'2px 6px'}}>✕</button>
+            </div>
+          ))}
+          <div style={{display:'flex',gap:8,marginTop:14}}>
+            <input value={newSt} onChange={e=>setNewSt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addStudent(cls.id)} placeholder="Student full name"
+              style={{flex:1,background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:8,padding:'9px 12px',fontSize:13,fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
+            <Btn sm onClick={()=>addStudent(cls.id)} color={T.green} text={T.bg}>Add</Btn>
+          </div>
+          <div style={{marginTop:14}}><Btn sm outline color={T.red} onClick={()=>deleteClass(cls.id)}>🗑 Delete Class</Btn></div>
+        </div>}
+      </div>;
+    })}
+    <Modal open={showNew} onClose={()=>setShowNew(false)} title="Create New Class">
+      <Inp label="Class Name" value={clsName} onChange={setClsName} placeholder="e.g. Class 5-A"/>
+      <Btn full onClick={createClass} color={T.green} text={T.bg}>Create Class</Btn>
+    </Modal>
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   ADMIN — HOLIDAYS
+════════════════════════════════════════ */
+function AdminHolidays({holidays,setHolidays}){
+  const[mode,setMode]=useState('single');
+  const[sDate,setSDate]=useState(todayKey());
+  const[rStart,setRStart]=useState(todayKey());
+  const[rEnd,setREnd]=useState(todayKey());
+  const[reason,setReason]=useState('');
+  const[vp,setVp]=useState({y:new Date().getFullYear(),m:new Date().getMonth()});
+  const hSet=new Set(holidays.map(h=>h.date));
+  const addSingle=()=>{if(!sDate)return;if(hSet.has(sDate)){alert('Already a holiday');return;}setHolidays(p=>[...p,{date:sDate,reason:reason.trim()||'Holiday'}]);setReason('');};
+  const addRange=()=>{
+    if(rStart>rEnd){alert('Start must be before end');return;}
+    const toAdd=[],cur=new Date(rStart+'T12:00:00'),end=new Date(rEnd+'T12:00:00');
+    while(cur<=end){const k=dateKey(cur);if(!hSet.has(k))toAdd.push({date:k,reason:reason.trim()||'Holiday'});cur.setDate(cur.getDate()+1);}
+    if(toAdd.length===0){alert('All dates already holidays');return;}
+    setHolidays(p=>[...p,...toAdd]);setReason('');alert(`Added ${toAdd.length} holiday${toAdd.length>1?'s':''}`);
+  };
+  const addSundaysOfYear=yr=>{
+    const toAdd=[],d=new Date(yr,0,1);
+    while(d.getDay()!==0)d.setDate(d.getDate()+1);
+    while(d.getFullYear()===yr){const k=dateKey(d);if(!hSet.has(k))toAdd.push({date:k,reason:'Sunday'});d.setDate(d.getDate()+7);}
+    setHolidays(p=>[...p,...toAdd]);alert(`Added ${toAdd.length} Sundays of ${yr}`);
+  };
+  const remove=date=>setHolidays(p=>p.filter(h=>h.date!==date));
+  const{y,m}=vp;
+  const monthHols=holidays.filter(h=>{const[hy,hm]=h.date.split('-').map(Number);return hy===y&&hm-1===m;}).sort((a,b)=>a.date.localeCompare(b.date));
+  const modeBtn=(id,label)=><button onClick={()=>setMode(id)} style={{flex:1,background:mode===id?T.accent:T.surface,color:mode===id?T.bg:T.sub,border:'none',borderRadius:8,padding:'8px 4px',fontSize:11,fontWeight:800,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>{label}</button>;
+  return<div>
+    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Holidays & Vacations</div>
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:18,marginBottom:16}}>
+      <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:12}}>Add Holiday</div>
+      <div style={{display:'flex',gap:6,marginBottom:16}}>{modeBtn('single','📌 Single Day')}{modeBtn('range','📆 Date Range')}{modeBtn('auto','🔄 Auto Sundays')}</div>
+      {mode==='single'&&<><Inp label="Date" type="date" value={sDate} onChange={setSDate}/><Inp label="Reason (optional)" value={reason} onChange={setReason} placeholder="e.g. Diwali, Republic Day…"/><Btn full onClick={addSingle}>📌 Add Holiday</Btn></>}
+      {mode==='range'&&<><Inp label="From Date" type="date" value={rStart} onChange={setRStart}/><Inp label="To Date" type="date" value={rEnd} onChange={setREnd}/><Inp label="Reason (optional)" value={reason} onChange={setReason} placeholder="e.g. Summer Vacation…"/><Btn full onClick={addRange} color={T.orange}>📆 Add Date Range</Btn></>}
+      {mode==='auto'&&<div>
+        <div style={{fontSize:13,color:T.sub,marginBottom:16,lineHeight:1.6}}>Auto-mark all Sundays of a year.<br/><span style={{color:T.green,fontWeight:700}}>Note:</span> Sundays are always excluded from attendance regardless.</div>
+        {[new Date().getFullYear()-1,new Date().getFullYear(),new Date().getFullYear()+1].map(yr=>(
+          <div key={yr} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${T.border}44`}}>
+            <div><div style={{fontWeight:800,color:T.text}}>All Sundays of {yr}</div><div style={{fontSize:12,color:T.sub}}>52–53 dates</div></div>
+            <Btn sm onClick={()=>addSundaysOfYear(yr)} color={T.yellow} text={T.bg}>Add All</Btn>
+          </div>
+        ))}
+      </div>}
+    </div>
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:18}}>
+      <MonthNav y={y} m={m} onChange={setVp}/>
+      <WDStrip y={y} m={m} holidays={holidays}/>
+      {monthHols.length===0?<div style={{textAlign:'center',color:T.muted,fontSize:13,padding:'20px 0'}}>No holidays in {monthLabel(y,m)}</div>
+        :monthHols.map(h=>(
+          <div key={h.date} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 0',borderBottom:`1px solid ${T.border}33`}}>
+            <div><div style={{fontWeight:700,fontSize:14,color:T.text}}>{fmtDate(h.date)}</div><div style={{fontSize:12,color:T.sub,marginTop:2}}>{isSunday(h.date)?'🔵 Sunday':`🟡 ${h.reason}`}</div></div>
+            <button onClick={()=>remove(h.date)} style={{background:'none',border:'none',color:T.red,cursor:'pointer',fontSize:20,padding:'4px 8px'}}>✕</button>
+          </div>
+        ))
       }
+    </div>
+  </div>;
+}
 
-      /* ─── PWA Install Prompt ─── */
-      let deferredPrompt = null;
-      const banner      = document.getElementById('pwa-install-banner');
-      const installBtn  = document.getElementById('pwa-install-btn');
-      const closeBtn    = document.getElementById('pwa-close-btn');
+/* ════════════════════════════════════════
+   ADMIN — SUMMARY
+════════════════════════════════════════ */
+function AdminSummary({classes,holidays,attendance}){
+  const now=new Date();
+  const[vp,setVp]=useState({y:now.getFullYear(),m:now.getMonth()});
+  const workDays=useMemo(()=>getWorkingDays(vp.y,vp.m,holidays),[vp,holidays]);
+  return<div>
+    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Attendance Summary</div>
+    <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
+    <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
+    {classes.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:14,padding:'40px 0'}}>No classes created yet.</div>}
+    {classes.map(cls=>{
+      const total=workDays.length*cls.students.length;let present=0;
+      workDays.forEach(date=>cls.students.forEach(st=>{if(attendance[date]?.[cls.id]?.[st.id]==='P')present++;}));
+      const pct=total>0?Math.round((present/total)*100):null,pc=pctColor(pct);
+      const stStats=cls.students.map(st=>{let p=0,a=0;workDays.forEach(date=>{const mk=attendance[date]?.[cls.id]?.[st.id];if(mk==='P')p++;else if(mk==='A')a++;});return{...st,p,a,pct:(p+a)>0?Math.round((p/(p+a))*100):null};});
+      return<div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,overflow:'hidden'}}>
+        <div style={{padding:'16px 18px'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <div style={{fontWeight:900,fontSize:17,color:T.text}}>{cls.name}</div>
+            <div style={{fontSize:28,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div>
+          </div>
+          {pct!==null&&<PctBar pct={pct}/>}
+          <div style={{fontSize:12,color:T.sub}}>{cls.students.length} students · {workDays.length} working days</div>
+        </div>
+        {cls.students.length>0&&<div style={{borderTop:`1px solid ${T.border}`,padding:'12px 18px'}}>
+          <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.05em'}}>STUDENT-WISE</div>
+          {stStats.map((st,i)=>{const sc=pctColor(st.pct);return<div key={st.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:i<stStats.length-1?`1px solid ${T.border}22`:'none'}}>
+            <div style={{fontSize:14,color:T.text,fontWeight:600}}>{st.name}</div>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <span style={{fontSize:12,color:T.green,fontWeight:700}}>P:{st.p}</span>
+              <span style={{fontSize:12,color:T.red,fontWeight:700}}>A:{st.a}</span>
+              <span style={{fontSize:14,fontWeight:900,color:sc,minWidth:38,textAlign:'right'}}>{st.pct!==null?`${st.pct}%`:'—'}</span>
+            </div>
+          </div>;})}
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
 
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        /* Show install banner after a short delay */
-        setTimeout(() => {
-          if (banner) banner.style.display = 'flex';
-        }, 3000);
-      });
+/* ════════════════════════════════════════
+   ADMIN DASHBOARD
+════════════════════════════════════════ */
+function AdminDashboard({user,classes,setClasses,holidays,setHolidays,attendance,onLogout}){
+  const[tab,setTab]=useState('classes');
+  const tabs=[{id:'classes',label:'Classes',icon:'🏫'},{id:'holidays',label:'Holidays',icon:'📅'},{id:'summary',label:'Summary',icon:'📊'}];
+  return<div style={SS}><Header user={user} onLogout={onLogout}/>
+    <div style={{padding:'16px 16px 90px'}}>
+      {tab==='classes' &&<AdminClasses  classes={classes} setClasses={setClasses}/>}
+      {tab==='holidays'&&<AdminHolidays holidays={holidays} setHolidays={setHolidays}/>}
+      {tab==='summary' &&<AdminSummary  classes={classes} holidays={holidays} attendance={attendance}/>}
+    </div>
+    <TabBar tabs={tabs} active={tab} onChange={setTab}/>
+  </div>;
+}
 
-      if (installBtn) {
-        installBtn.addEventListener('click', async () => {
-          if (!deferredPrompt) return;
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          console.log('[PWA] Install outcome:', outcome);
-          deferredPrompt = null;
-          if (banner) banner.style.display = 'none';
-        });
-      }
+/* ════════════════════════════════════════
+   TEACHER — TODAY
+════════════════════════════════════════ */
+function TeacherToday({classes,selectedClass,holidays,attendance,setAttendance}){
+  const[date,setDate]=useState(todayKey());
+  const hSet=new Set(holidays.map(h=>h.date));
+  const isHoliday=hSet.has(date)||isSunday(date);
+  const cls=classes.find(c=>c.id===selectedClass);
+  const dayAtt=(cls&&attendance[date]?.[cls.id])||{};
+  const present=cls?cls.students.filter(s=>dayAtt[s.id]==='P').length:0;
+  const total=cls?cls.students.length:0;
+  const markAll=status=>{if(!cls||isHoliday)return;setAttendance(p=>{const day={...(p[date]||{})},ca={...(day[cls.id]||{})};cls.students.forEach(s=>{ca[s.id]=status;});day[cls.id]=ca;return{...p,[date]:day};});};
+  const toggle=sid=>{if(!cls||isHoliday)return;setAttendance(p=>{const day={...(p[date]||{})},ca={...(day[cls.id]||{})};ca[sid]=ca[sid]==='P'?'A':'P';day[cls.id]=ca;return{...p,[date]:day};});};
+  return<div>
+    <div style={{marginBottom:16}}>
+      <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Date</label>
+      <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none'}}/>
+    </div>
+    {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15}}>
+      {isSunday(date)?'🔵 Sunday — No Attendance Required':'🎉 Holiday — School Closed'}
+      <div style={{fontSize:12,fontWeight:600,color:T.sub,marginTop:4}}>{holidays.find(h=>h.date===date)?.reason||''}</div>
+    </div>}
+    {!cls&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>Please select a class above.</div>}
+    {cls&&!isHoliday&&<>
+      <div style={{display:'flex',justifyContent:'space-around',background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 10px',marginBottom:16}}>
+        <Stat value={present} label="PRESENT" color={T.green}/>
+        <Stat value={total-present} label="ABSENT" color={T.red}/>
+        <Stat value={total} label="TOTAL" color={T.text}/>
+        <Stat value={total>0?`${Math.round(present/total*100)}%`:'—'} label="RATE" color={T.yellow}/>
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:14}}>
+        <Btn full sm onClick={()=>markAll('P')} color={T.green} text={T.bg}>✓ All Present</Btn>
+        <Btn full sm onClick={()=>markAll('A')} color={T.red}>✗ All Absent</Btn>
+      </div>
+      {cls.students.map((st,i)=>{
+        const mk=dayAtt[st.id],isP=mk==='P',isA=mk==='A';
+        return<div key={st.id} onClick={()=>toggle(st.id)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:isP?`${T.green}18`:isA?`${T.red}18`:T.card,border:`1.5px solid ${isP?T.green:isA?T.red:T.border}`,borderRadius:12,padding:'13px 16px',marginBottom:8,cursor:'pointer'}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <div style={{width:34,height:34,borderRadius:'50%',background:isP?T.green:isA?T.red:T.surface,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:13,color:T.bg}}>{i+1}</div>
+            <span style={{fontWeight:700,fontSize:15,color:T.text}}>{st.name}</span>
+          </div>
+          <div style={{width:38,height:38,borderRadius:10,background:isP?T.green:isA?T.red:T.surface,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:18,color:(isP||isA)?T.bg:T.muted}}>{isP?'P':isA?'A':'?'}</div>
+        </div>;
+      })}
+      {cls.students.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:13,padding:'20px 0'}}>No students. Ask admin to add students.</div>}
+    </>}
+  </div>;
+}
 
-      if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-          if (banner) banner.style.display = 'none';
-        });
-      }
+/* ════════════════════════════════════════
+   TEACHER — MONTHLY
+════════════════════════════════════════ */
+function TeacherMonthly({classes,selectedClass,holidays,attendance}){
+  const now=new Date();
+  const[vp,setVp]=useState({y:now.getFullYear(),m:now.getMonth()});
+  const cls=classes.find(c=>c.id===selectedClass);
+  const workDays=useMemo(()=>getWorkingDays(vp.y,vp.m,holidays),[vp,holidays]);
+  if(!cls)return<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>Please select a class above.</div>;
+  return<div>
+    <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
+    <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
+    {(()=>{let total=0,p=0;workDays.forEach(date=>cls.students.forEach(st=>{total++;if(attendance[date]?.[cls.id]?.[st.id]==='P')p++;}));const pct=total>0?Math.round(p/total*100):null;
+    return<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 18px',marginBottom:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:12,color:T.sub}}>Class average this month</div></div><div style={{fontSize:28,fontWeight:900,color:pctColor(pct)}}>{pct!==null?`${pct}%`:'—'}</div></div>
+      {pct!==null&&<PctBar pct={pct}/>}
+    </div>;})()}
+    {cls.students.map(st=>{
+      let p=0,a=0;workDays.forEach(date=>{const mk=attendance[date]?.[cls.id]?.[st.id];if(mk==='P')p++;else if(mk==='A')a++;});
+      const filled=p+a,pct=filled>0?Math.round(p/filled*100):null,pc=pctColor(pct);
+      return<div key={st.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 16px',marginBottom:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{fontWeight:800,fontSize:14,color:T.text}}>{st.name}</span><span style={{fontWeight:900,fontSize:16,color:pc}}>{pct!==null?`${pct}%`:'—'}</span></div>
+        {filled>0&&<PctBar pct={pct}/>}
+        <div style={{display:'flex',gap:16,fontSize:12,marginBottom:10}}><span style={{color:T.green,fontWeight:700}}>Present: {p}</span><span style={{color:T.red,fontWeight:700}}>Absent: {a}</span>{workDays.length-filled>0&&<span style={{color:T.muted}}>Unmarked: {workDays.length-filled}</span>}</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+          {workDays.map(date=>{const mk=attendance[date]?.[cls.id]?.[st.id],d=new Date(date+'T12:00:00').getDate();
+          return<div key={date} title={`${fmtDate(date)}: ${mk||'Unmarked'}`} style={{width:28,height:28,borderRadius:6,background:mk==='P'?`${T.green}33`:mk==='A'?`${T.red}33`:T.surface,border:`1px solid ${mk==='P'?T.green:mk==='A'?T.red:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:mk==='P'?T.green:mk==='A'?T.red:T.muted}}>{d}</div>;
+          })}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
 
-      window.addEventListener('appinstalled', () => {
-        console.log('[PWA] App installed successfully!');
-        if (banner) banner.style.display = 'none';
-        deferredPrompt = null;
-      });
-    </script>
-  </body>
+/* ════════════════════════════════════════
+   TEACHER DASHBOARD
+════════════════════════════════════════ */
+function TeacherDashboard({user,classes,holidays,attendance,setAttendance,onLogout}){
+  const[tab,setTab]=useState('today');
+  const[cls,setCls]=useState(classes[0]?.id||null);
+  const tabs=[{id:'today',label:"Today's",icon:'✅'},{id:'monthly',label:'Monthly',icon:'📅'}];
+  return<div style={SS}><Header user={user} onLogout={onLogout}/>
+    <div style={{padding:'16px 16px 90px'}}>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:8}}>Your Class</label>
+        {classes.length===0?<div style={{color:T.muted,fontSize:13}}>No classes yet. Ask admin to create classes.</div>
+          :<div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {classes.map(c=><button key={c.id} onClick={()=>setCls(c.id)} style={{background:cls===c.id?T.accent:T.card,color:cls===c.id?T.bg:T.text,border:`1.5px solid ${cls===c.id?T.accent:T.border}`,borderRadius:10,padding:'9px 18px',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
+              {c.name}<span style={{fontSize:11,marginLeft:6,opacity:0.7}}>({c.students.length})</span>
+            </button>)}
+          </div>
+        }
+      </div>
+      {tab==='today'  &&<TeacherToday   classes={classes} selectedClass={cls} holidays={holidays} attendance={attendance} setAttendance={setAttendance}/>}
+      {tab==='monthly'&&<TeacherMonthly classes={classes} selectedClass={cls} holidays={holidays} attendance={attendance}/>}
+    </div>
+    <TabBar tabs={tabs} active={tab} onChange={setTab}/>
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   PRINCIPAL — TODAY
+════════════════════════════════════════ */
+function PrincipalToday({classes,holidays,attendance}){
+  const[date,setDate]=useState(todayKey());
+  const hSet=new Set(holidays.map(h=>h.date));
+  const isHoliday=hSet.has(date)||isSunday(date);
+  const totals=useMemo(()=>{let p=0,t=0;classes.forEach(cls=>cls.students.forEach(st=>{t++;if(attendance[date]?.[cls.id]?.[st.id]==='P')p++;}));return{p,t};},[classes,attendance,date]);
+  return<div>
+    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>All Classes — Today</div>
+    <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',marginBottom:16}}/>
+    {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15,marginBottom:16}}>{isSunday(date)?'🔵 Sunday — No School':'🎉 Holiday — School Closed'}</div>}
+    {!isHoliday&&classes.length>0&&<div style={{background:`linear-gradient(135deg,${T.accent}15,${T.indigo}15)`,border:`1px solid ${T.accent}33`,borderRadius:14,display:'flex',justifyContent:'space-around',padding:'14px 10px',marginBottom:16}}>
+      <Stat value={totals.p} label="PRESENT" color={T.green}/><Stat value={totals.t-totals.p} label="ABSENT" color={T.red}/><Stat value={totals.t} label="TOTAL" color={T.text}/><Stat value={totals.t>0?`${Math.round(totals.p/totals.t*100)}%`:'—'} label="RATE" color={T.yellow}/>
+    </div>}
+    {!isHoliday&&classes.map(cls=>{
+      const dayAtt=attendance[date]?.[cls.id]||{};
+      const p=cls.students.filter(s=>dayAtt[s.id]==='P').length,t=cls.students.length;
+      const pct=t>0?Math.round(p/t*100):null,pc=pctColor(pct);
+      return<div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,padding:'16px 18px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:26,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div></div>
+        {pct!==null&&<PctBar pct={pct}/>}
+        <div style={{fontSize:12,color:T.sub,marginBottom:14}}>{p} present / {t-p} absent / {t} total</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          {cls.students.map(st=>{const mk=dayAtt[st.id];return<div key={st.id} style={{background:mk==='P'?`${T.green}22`:mk==='A'?`${T.red}22`:T.surface,border:`1px solid ${mk==='P'?T.green:mk==='A'?T.red:T.border}`,borderRadius:8,padding:'4px 10px',fontSize:12,fontWeight:700,color:mk==='P'?T.green:mk==='A'?T.red:T.muted}}>{st.name.split(' ')[0]}<span style={{marginLeft:4,opacity:0.8}}>{mk||'?'}</span></div>;})}
+        </div>
+      </div>;
+    })}
+    {classes.length===0&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>No classes created yet.</div>}
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   PRINCIPAL — MONTHLY
+════════════════════════════════════════ */
+function PrincipalMonthly({classes,holidays,attendance}){
+  const now=new Date();
+  const[vp,setVp]=useState({y:now.getFullYear(),m:now.getMonth()});
+  const workDays=useMemo(()=>getWorkingDays(vp.y,vp.m,holidays),[vp,holidays]);
+  const schoolTotal=useMemo(()=>{let p=0,t=0;workDays.forEach(date=>classes.forEach(cls=>cls.students.forEach(st=>{t++;if(attendance[date]?.[cls.id]?.[st.id]==='P')p++;})));return{p,t,pct:t>0?Math.round(p/t*100):null};},[workDays,classes,attendance]);
+  return<div>
+    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Monthly — All Classes</div>
+    <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
+    <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
+    {classes.length>0&&<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'16px 18px',marginBottom:20}}>
+      <div style={{fontSize:13,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.04em'}}>SCHOOL-WIDE AVERAGE</div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontSize:13,color:T.sub}}>{schoolTotal.p} present of {schoolTotal.t} slots</div><div style={{fontSize:32,fontWeight:900,color:pctColor(schoolTotal.pct)}}>{schoolTotal.pct!==null?`${schoolTotal.pct}%`:'—'}</div></div>
+      {schoolTotal.pct!==null&&<PctBar pct={schoolTotal.pct}/>}
+    </div>}
+    {classes.map(cls=>{
+      let clsP=0,clsT=0;workDays.forEach(date=>cls.students.forEach(st=>{clsT++;if(attendance[date]?.[cls.id]?.[st.id]==='P')clsP++;}));
+      const pct=clsT>0?Math.round(clsP/clsT*100):null,pc=pctColor(pct);
+      const dayBars=workDays.map(date=>{const dp=cls.students.filter(s=>attendance[date]?.[cls.id]?.[s.id]==='P').length,dt=cls.students.length;return{date,p:dp,t:dt,pct:dt>0?Math.round(dp/dt*100):null};});
+      return<div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,overflow:'hidden'}}>
+        <div style={{padding:'16px 18px'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:26,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div></div>
+          {pct!==null&&<PctBar pct={pct}/>}
+          <div style={{display:'flex',gap:16,fontSize:12}}><span style={{color:T.text}}>{cls.students.length} students</span><span style={{color:T.green,fontWeight:700}}>P:{clsP}</span><span style={{color:T.red,fontWeight:700}}>A:{clsT-clsP}</span></div>
+        </div>
+        <div style={{padding:'0 18px 16px',display:'flex',flexWrap:'wrap',gap:4}}>
+          {dayBars.map(({date,pct:dp,p,t})=>{const d=new Date(date+'T12:00:00').getDate(),dc=pctColor(dp);
+          return<div key={date} title={`${fmtDate(date)}: ${p}/${t}`} style={{width:30,height:30,borderRadius:6,background:dp!==null?`${dc}33`:T.surface,border:`1px solid ${dp!==null?dc:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:dp!==null?dc:T.muted}}>{d}</div>;
+          })}
+        </div>
+        <div style={{borderTop:`1px solid ${T.border}`,padding:'12px 18px'}}>
+          <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.05em'}}>STUDENT-WISE</div>
+          {cls.students.map(st=>{let p=0,a=0;workDays.forEach(date=>{const mk=attendance[date]?.[cls.id]?.[st.id];if(mk==='P')p++;else if(mk==='A')a++;});const sp=(p+a)>0?Math.round(p/(p+a)*100):null;
+          return<div key={st.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:`1px solid ${T.border}22`}}>
+            <span style={{fontSize:13,color:T.text,fontWeight:600}}>{st.name}</span>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}><span style={{fontSize:12,color:T.green,fontWeight:700}}>P:{p}</span><span style={{fontSize:12,color:T.red,fontWeight:700}}>A:{a}</span><span style={{fontSize:14,fontWeight:900,color:pctColor(sp),minWidth:38,textAlign:'right'}}>{sp!==null?`${sp}%`:'—'}</span></div>
+          </div>;})}
+        </div>
+      </div>;
+    })}
+    {classes.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:14,padding:'40px 0'}}>No classes available.</div>}
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   PRINCIPAL DASHBOARD
+════════════════════════════════════════ */
+function PrincipalDashboard({user,classes,holidays,attendance,onLogout}){
+  const[tab,setTab]=useState('today');
+  const tabs=[{id:'today',label:"Today's",icon:'📋'},{id:'monthly',label:'Monthly',icon:'📊'}];
+  return<div style={SS}><Header user={user} onLogout={onLogout}/>
+    <div style={{padding:'16px 16px 90px'}}>
+      {tab==='today'  &&<PrincipalToday   classes={classes} holidays={holidays} attendance={attendance}/>}
+      {tab==='monthly'&&<PrincipalMonthly classes={classes} holidays={holidays} attendance={attendance}/>}
+    </div>
+    <TabBar tabs={tabs} active={tab} onChange={setTab}/>
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   ROOT APP
+════════════════════════════════════════ */
+function App(){
+  const[auth,setAuth]=useState(null);
+  const[classes,   setClasses]   =useLs('edu_classes',   []);
+  const[holidays,  setHolidays]  =useLs('edu_holidays',  []);
+  const[attendance,setAttendance]=useLs('edu_attendance',{});
+  const login =(un,u)=>setAuth({un,u});
+  const logout=()=>setAuth(null);
+  if(!auth)return<LoginScreen onLogin={login}/>;
+  const{u}=auth;
+  const props={user:u,classes,holidays,attendance,onLogout:logout};
+  if(u.role==='admin')     return<AdminDashboard     {...props} setClasses={setClasses} setHolidays={setHolidays}/>;
+  if(u.role==='teacher')   return<TeacherDashboard   {...props} setAttendance={setAttendance}/>;
+  if(u.role==='principal') return<PrincipalDashboard {...props}/>;
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+
+<!-- Service Worker -->
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>{
+      navigator.serviceWorker.register('./sw.js',{scope:'./'})
+        .then(r=>console.log('[SW] Registered',r.scope))
+        .catch(e=>console.warn('[SW] Failed',e));
+    });
+  }
+</script>
+</body>
 </html>
