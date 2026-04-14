@@ -9,16 +9,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="EduAttend" />
   <meta name="description" content="EduAttend — School Attendance Management" />
-  <link rel="manifest" href="./manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
-  <link rel="apple-touch-icon" href="./icon.svg" />
   <title>EduAttend - School Attendance</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 
-  <!-- React 18 + Babel standalone (no build step needed) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -41,8 +37,18 @@ const{useState,useMemo}=React;
 /* ── THEME ── */
 const T={bg:'#0B1426',surface:'#111F35',card:'#162236',card2:'#1C2D44',border:'#1E3A5F',border2:'#243B5E',text:'#F0F6FF',sub:'#94A3B8',muted:'#4A6080',accent:'#38BDF8',indigo:'#818CF8',green:'#34D399',red:'#F87171',yellow:'#FBBF24',orange:'#FB923C'};
 
+/* ── CLASS / DIVISION CONSTANTS ── */
+const CLASS_LIST=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+const DIV_LIST=Array.from({length:26},(_,i)=>String.fromCharCode(65+i));
+
 /* ── USERS ── */
-const USERS={admin:{pw:'admin123',role:'admin',name:'Administrator',color:T.indigo},teacher1:{pw:'teach001',role:'teacher',name:'Ms. Priya Sharma',color:T.accent},teacher2:{pw:'teach002',role:'teacher',name:'Mr. Rahul Verma',color:T.accent},teacher3:{pw:'teach003',role:'teacher',name:'Ms. Anjali Patel',color:T.accent},principal:{pw:'prin456',role:'principal',name:'Dr. S. Mehta',color:T.yellow}};
+const USERS={
+  admin:    {pw:'admin123',role:'admin',    name:'Administrator',      color:T.indigo},
+  teacher1: {pw:'teach001',role:'teacher',  name:'Ms. Priya Sharma',   color:T.accent},
+  teacher2: {pw:'teach002',role:'teacher',  name:'Mr. Rahul Verma',    color:T.accent},
+  teacher3: {pw:'teach003',role:'teacher',  name:'Ms. Anjali Patel',   color:T.accent},
+  principal:{pw:'prin456', role:'principal',name:'Dr. S. Mehta',       color:T.yellow}
+};
 
 /* ── DATE UTILS ── */
 const pad=n=>String(n).padStart(2,'0');
@@ -55,6 +61,7 @@ const daysInMonth=(y,m)=>new Date(y,m+1,0).getDate();
 const monthDateKeys=(y,m)=>Array.from({length:daysInMonth(y,m)},(_,i)=>dateKey(new Date(y,m,i+1)));
 const uid=()=>Math.random().toString(36).slice(2,9);
 const getWorkingDays=(y,m,holidays)=>{const hSet=new Set(holidays.map(h=>h.date));return monthDateKeys(y,m).filter(d=>!isSunday(d)&&!hSet.has(d));};
+const sortClasses=arr=>[...arr].sort((a,b)=>{const ai=CLASS_LIST.indexOf(a.className),bi=CLASS_LIST.indexOf(b.className);return ai!==bi?ai-bi:a.division.localeCompare(b.division);});
 
 /* ── LOCAL STORAGE ── */
 function useLs(key,init){
@@ -135,6 +142,20 @@ function WDStrip({y,m,holidays}){
 
 function PctBar({pct}){const c=pctColor(pct);return<div style={{background:T.surface,borderRadius:6,height:8,marginTop:8,marginBottom:8}}><div style={{background:`linear-gradient(90deg,${c},${c}99)`,width:`${pct||0}%`,height:'100%',borderRadius:6,transition:'width .6s'}}/></div>;}
 
+/* Gender summary row used in multiple views */
+function GenderRow({icon,label,color,present,absent,total,pct}){
+  return<div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 0',borderBottom:`1px solid ${T.border}22`}}>
+    <span style={{fontSize:16,minWidth:22}}>{icon}</span>
+    <span style={{fontSize:13,fontWeight:800,color,minWidth:52}}>{label}</span>
+    <div style={{flex:1,display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:4,textAlign:'center'}}>
+      <div><div style={{fontSize:15,fontWeight:900,color:T.green}}>{present}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>PRESENT</div></div>
+      <div><div style={{fontSize:15,fontWeight:900,color:T.red}}>{absent}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>ABSENT</div></div>
+      <div><div style={{fontSize:15,fontWeight:900,color}}>{total}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>TOTAL</div></div>
+      <div><div style={{fontSize:15,fontWeight:900,color:pctColor(pct)}}>{pct!==null?`${pct}%`:'—'}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>RATE</div></div>
+    </div>
+  </div>;
+}
+
 /* ════════════════════════════════════════
    LOGIN
 ════════════════════════════════════════ */
@@ -178,59 +199,137 @@ function LoginScreen({onLogin}){
 }
 
 /* ════════════════════════════════════════
-   ADMIN — CLASSES
+   ADMIN — CLASSES  (redesigned)
 ════════════════════════════════════════ */
 function AdminClasses({classes,setClasses}){
   const[showNew,setShowNew]=useState(false);
-  const[clsName,setClsName]=useState('');
+  const[selClass,setSelClass]=useState('I');
+  const[selDiv,setSelDiv]=useState('A');
+  const[boys,setBoys]=useState('');
+  const[girls,setGirls]=useState('');
   const[expanded,setExpanded]=useState(null);
-  const[newSt,setNewSt]=useState('');
-  const createClass=()=>{if(!clsName.trim())return;setClasses(p=>[...p,{id:uid(),name:clsName.trim(),students:[]}]);setClsName('');setShowNew(false);};
+
+  const total=(parseInt(boys)||0)+(parseInt(girls)||0);
+
+  const selStyle={background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none'};
+
+  const createClass=()=>{
+    const b=parseInt(boys)||0,g=parseInt(girls)||0;
+    if(b+g===0){alert('Please enter the number of boys and/or girls.');return;}
+    const name=`Class ${selClass}-${selDiv}`;
+    if(classes.find(c=>c.className===selClass&&c.division===selDiv)){alert(`${name} already exists!`);return;}
+    setClasses(p=>[...p,{id:uid(),className:selClass,division:selDiv,name,boys:b,girls:g}]);
+    setBoys('');setGirls('');setShowNew(false);
+  };
+
   const deleteClass=id=>{if(!window.confirm('Delete this class?'))return;setClasses(p=>p.filter(c=>c.id!==id));};
-  const addStudent=cid=>{if(!newSt.trim())return;setClasses(p=>p.map(c=>c.id===cid?{...c,students:[...c.students,{id:uid(),name:newSt.trim()}]}:c));setNewSt('');};
-  const removeStudent=(cid,sid)=>setClasses(p=>p.map(c=>c.id===cid?{...c,students:c.students.filter(s=>s.id!==sid)}:c));
-  return<div>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-      <div style={{fontSize:20,fontWeight:900,color:T.text}}>Classes</div>
-      <Btn sm onClick={()=>setShowNew(true)} color={T.green} text={T.bg}>+ New Class</Btn>
-    </div>
-    {classes.length===0&&<div style={{textAlign:'center',padding:'50px 0',background:T.card,border:`1px dashed ${T.border2}`,borderRadius:16}}><div style={{fontSize:40,marginBottom:12}}>🏫</div><div style={{color:T.sub,fontSize:14}}>No classes yet.</div></div>}
-    {classes.map(cls=>{
-      const isOpen=expanded===cls.id;
-      return<div key={cls.id} style={{background:T.card,border:`1px solid ${isOpen?T.accent:T.border}`,borderRadius:16,marginBottom:12,overflow:'hidden'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'15px 18px',cursor:'pointer'}} onClick={()=>setExpanded(isOpen?null:cls.id)}>
-          <div><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:12,color:T.sub,marginTop:2}}>{cls.students.length} student{cls.students.length!==1?'s':''}</div></div>
-          <div style={{display:'flex',gap:8,alignItems:'center'}}><Badge color={T.accent}>{cls.students.length}</Badge><span style={{color:T.sub,fontSize:18}}>{isOpen?'▲':'▼'}</span></div>
-        </div>
-        {isOpen&&<div style={{borderTop:`1px solid ${T.border}`,padding:'16px 18px'}}>
-          {cls.students.length===0&&<div style={{color:T.muted,fontSize:13,textAlign:'center',marginBottom:12}}>No students yet</div>}
-          {cls.students.map((s,i)=>(
-            <div key={s.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${T.border}33`}}>
-              <div style={{display:'flex',gap:10,alignItems:'center'}}>
-                <div style={{width:28,height:28,borderRadius:'50%',background:`linear-gradient(135deg,${T.accent}44,${T.indigo}44)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:T.accent}}>{i+1}</div>
-                <span style={{fontSize:14,color:T.text,fontWeight:600}}>{s.name}</span>
+  const updateStr=(id,field,val)=>setClasses(p=>p.map(c=>c.id===id?{...c,[field]:Math.max(0,parseInt(val)||0)}:c));
+
+  const numInStyle=(color)=>({
+    background:T.surface,color,border:`1.5px solid ${color}55`,borderRadius:8,
+    padding:'10px',fontSize:20,fontWeight:900,fontFamily:"'Nunito',sans-serif",
+    width:'100%',outline:'none',textAlign:'center'
+  });
+
+  return(
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div style={{fontSize:20,fontWeight:900,color:T.text}}>Classes</div>
+        <Btn sm onClick={()=>setShowNew(true)} color={T.green} text={T.bg}>+ New Class</Btn>
+      </div>
+
+      {classes.length===0&&<div style={{textAlign:'center',padding:'50px 0',background:T.card,border:`1px dashed ${T.border2}`,borderRadius:16}}>
+        <div style={{fontSize:40,marginBottom:12}}>🏫</div>
+        <div style={{color:T.sub,fontSize:14}}>No classes yet. Tap + New Class to begin.</div>
+      </div>}
+
+      {sortClasses(classes).map(cls=>{
+        const isOpen=expanded===cls.id,tot=cls.boys+cls.girls;
+        return(
+          <div key={cls.id} style={{background:T.card,border:`1px solid ${isOpen?T.accent:T.border}`,borderRadius:16,marginBottom:12,overflow:'hidden'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'15px 18px',cursor:'pointer'}} onClick={()=>setExpanded(isOpen?null:cls.id)}>
+              <div>
+                <div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div>
+                <div style={{fontSize:12,marginTop:3,display:'flex',gap:12}}>
+                  <span style={{color:T.accent}}>👦 Boys: {cls.boys}</span>
+                  <span style={{color:T.orange}}>👧 Girls: {cls.girls}</span>
+                  <span style={{color:T.green,fontWeight:800}}>Total: {tot}</span>
+                </div>
               </div>
-              <button onClick={()=>removeStudent(cls.id,s.id)} style={{background:'none',border:'none',color:T.red,cursor:'pointer',fontSize:18,lineHeight:1,padding:'2px 6px'}}>✕</button>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <Badge color={T.green}>{tot}</Badge>
+                <span style={{color:T.sub,fontSize:18}}>{isOpen?'▲':'▼'}</span>
+              </div>
             </div>
-          ))}
-          <div style={{display:'flex',gap:8,marginTop:14}}>
-            <input value={newSt} onChange={e=>setNewSt(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addStudent(cls.id)} placeholder="Student full name"
-              style={{flex:1,background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:8,padding:'9px 12px',fontSize:13,fontFamily:"'Nunito',sans-serif",outline:'none'}}/>
-            <Btn sm onClick={()=>addStudent(cls.id)} color={T.green} text={T.bg}>Add</Btn>
+            {isOpen&&<div style={{borderTop:`1px solid ${T.border}`,padding:'16px 18px'}}>
+              <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:10,letterSpacing:'0.05em'}}>EDIT CLASS STRENGTH</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:14}}>
+                <div>
+                  <label style={{fontSize:11,fontWeight:800,color:T.accent,textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:5}}>👦 Boys</label>
+                  <input type="number" min="0" value={cls.boys} onChange={e=>updateStr(cls.id,'boys',e.target.value)} style={numInStyle(T.accent)}/>
+                </div>
+                <div>
+                  <label style={{fontSize:11,fontWeight:800,color:T.orange,textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:5}}>👧 Girls</label>
+                  <input type="number" min="0" value={cls.girls} onChange={e=>updateStr(cls.id,'girls',e.target.value)} style={numInStyle(T.orange)}/>
+                </div>
+                <div>
+                  <label style={{fontSize:11,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',display:'block',marginBottom:5}}>Total</label>
+                  <div style={{background:T.surface,border:`1.5px solid ${T.green}33`,borderRadius:8,padding:'10px',fontSize:20,fontWeight:900,color:T.green,textAlign:'center',display:'flex',alignItems:'center',justifyContent:'center',minHeight:46}}>{cls.boys+cls.girls}</div>
+                </div>
+              </div>
+              <Btn sm outline color={T.red} onClick={()=>deleteClass(cls.id)}>🗑 Delete Class</Btn>
+            </div>}
           </div>
-          <div style={{marginTop:14}}><Btn sm outline color={T.red} onClick={()=>deleteClass(cls.id)}>🗑 Delete Class</Btn></div>
-        </div>}
-      </div>;
-    })}
-    <Modal open={showNew} onClose={()=>setShowNew(false)} title="Create New Class">
-      <Inp label="Class Name" value={clsName} onChange={setClsName} placeholder="e.g. Class 5-A"/>
-      <Btn full onClick={createClass} color={T.green} text={T.bg}>Create Class</Btn>
-    </Modal>
-  </div>;
+        );
+      })}
+
+      {/* CREATE NEW CLASS MODAL */}
+      <Modal open={showNew} onClose={()=>setShowNew(false)} title="Create New Class">
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Class</label>
+            <select value={selClass} onChange={e=>setSelClass(e.target.value)} style={selStyle}>
+              {CLASS_LIST.map(c=><option key={c} value={c}>Class {c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Division</label>
+            <select value={selDiv} onChange={e=>setSelDiv(e.target.value)} style={selStyle}>
+              {DIV_LIST.map(d=><option key={d} value={d}>Division {d}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{background:`${T.accent}12`,border:`1px solid ${T.accent}33`,borderRadius:10,padding:'10px 16px',marginBottom:16,textAlign:'center'}}>
+          <span style={{fontSize:16,fontWeight:900,color:T.accent}}>Class {selClass} — Division {selDiv}</span>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:14}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:800,color:T.accent,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>👦 No. of Boys</label>
+            <input type="number" min="0" value={boys} placeholder="0" onChange={e=>setBoys(e.target.value)}
+              style={{background:T.surface,color:T.accent,border:`1.5px solid ${T.accent}66`,borderRadius:10,padding:'12px',fontSize:24,fontWeight:900,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',textAlign:'center'}}/>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:800,color:T.orange,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>👧 No. of Girls</label>
+            <input type="number" min="0" value={girls} placeholder="0" onChange={e=>setGirls(e.target.value)}
+              style={{background:T.surface,color:T.orange,border:`1.5px solid ${T.orange}66`,borderRadius:10,padding:'12px',fontSize:24,fontWeight:900,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',textAlign:'center'}}/>
+          </div>
+        </div>
+
+        <div style={{background:T.surface,border:`1.5px solid ${T.green}44`,borderRadius:10,padding:'12px 18px',marginBottom:18,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:12,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.05em'}}>Total Students</span>
+          <span style={{fontSize:32,fontWeight:900,color:T.green}}>{total}</span>
+        </div>
+
+        <Btn full onClick={createClass} color={T.green} text={T.bg} disabled={total===0}>✓ Create Class</Btn>
+      </Modal>
+    </div>
+  );
 }
 
 /* ════════════════════════════════════════
-   ADMIN — HOLIDAYS
+   ADMIN — HOLIDAYS  (unchanged)
 ════════════════════════════════════════ */
 function AdminHolidays({holidays,setHolidays}){
   const[mode,setMode]=useState('single');
@@ -291,45 +390,101 @@ function AdminHolidays({holidays,setHolidays}){
 }
 
 /* ════════════════════════════════════════
-   ADMIN — SUMMARY
+   ADMIN — SUMMARY  (boys/girls breakdown)
 ════════════════════════════════════════ */
 function AdminSummary({classes,holidays,attendance}){
   const now=new Date();
   const[vp,setVp]=useState({y:now.getFullYear(),m:now.getMonth()});
   const workDays=useMemo(()=>getWorkingDays(vp.y,vp.m,holidays),[vp,holidays]);
-  return<div>
-    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Attendance Summary</div>
-    <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
-    <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
-    {classes.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:14,padding:'40px 0'}}>No classes created yet.</div>}
-    {classes.map(cls=>{
-      const total=workDays.length*cls.students.length;let present=0;
-      workDays.forEach(date=>cls.students.forEach(st=>{if(attendance[date]?.[cls.id]?.[st.id]==='P')present++;}));
-      const pct=total>0?Math.round((present/total)*100):null,pc=pctColor(pct);
-      const stStats=cls.students.map(st=>{let p=0,a=0;workDays.forEach(date=>{const mk=attendance[date]?.[cls.id]?.[st.id];if(mk==='P')p++;else if(mk==='A')a++;});return{...st,p,a,pct:(p+a)>0?Math.round((p/(p+a))*100):null};});
-      return<div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,overflow:'hidden'}}>
-        <div style={{padding:'16px 18px'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <div style={{fontWeight:900,fontSize:17,color:T.text}}>{cls.name}</div>
-            <div style={{fontSize:28,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div>
-          </div>
-          {pct!==null&&<PctBar pct={pct}/>}
-          <div style={{fontSize:12,color:T.sub}}>{cls.students.length} students · {workDays.length} working days</div>
-        </div>
-        {cls.students.length>0&&<div style={{borderTop:`1px solid ${T.border}`,padding:'12px 18px'}}>
-          <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.05em'}}>STUDENT-WISE</div>
-          {stStats.map((st,i)=>{const sc=pctColor(st.pct);return<div key={st.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'7px 0',borderBottom:i<stStats.length-1?`1px solid ${T.border}22`:'none'}}>
-            <div style={{fontSize:14,color:T.text,fontWeight:600}}>{st.name}</div>
-            <div style={{display:'flex',gap:10,alignItems:'center'}}>
-              <span style={{fontSize:12,color:T.green,fontWeight:700}}>P:{st.p}</span>
-              <span style={{fontSize:12,color:T.red,fontWeight:700}}>A:{st.a}</span>
-              <span style={{fontSize:14,fontWeight:900,color:sc,minWidth:38,textAlign:'right'}}>{st.pct!==null?`${st.pct}%`:'—'}</span>
+  const sorted=sortClasses(classes);
+
+  // school-wide totals
+  const schoolTotals=useMemo(()=>{
+    let bpAll=0,gpAll=0,bStr=0,gStr=0;
+    sorted.forEach(cls=>{
+      bStr+=cls.boys;gStr+=cls.girls;
+      workDays.forEach(date=>{const d=attendance[date]?.[cls.id]||{};bpAll+=d.bp||0;gpAll+=d.gp||0;});
+    });
+    const maxB=workDays.length*bStr,maxG=workDays.length*gStr;
+    return{bpAll,gpAll,bStr,gStr,maxB,maxG,pres:bpAll+gpAll,total:maxB+maxG};
+  },[sorted,workDays,attendance]);
+
+  return(
+    <div>
+      <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Attendance Summary</div>
+      <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
+      <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
+      {classes.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:14,padding:'40px 0'}}>No classes created yet.</div>}
+
+      {/* School-wide card */}
+      {classes.length>0&&(()=>{
+        const{bpAll,gpAll,bStr,gStr,maxB,maxG,pres,total}=schoolTotals;
+        const pct=total>0?Math.round(pres/total*100):null;
+        return(
+          <div style={{background:`linear-gradient(135deg,${T.accent}15,${T.indigo}15)`,border:`1px solid ${T.accent}33`,borderRadius:16,padding:'16px 18px',marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.04em'}}>SCHOOL-WIDE — {monthLabel(vp.y,vp.m)}</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:13,color:T.sub}}>{pres} present of {total} attendance slots</div>
+              <div style={{fontSize:32,fontWeight:900,color:pctColor(pct)}}>{pct!==null?`${pct}%`:'—'}</div>
             </div>
-          </div>;})}
-        </div>}
-      </div>;
-    })}
-  </div>;
+            {pct!==null&&<PctBar pct={pct}/>}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:4}}>
+              <div style={{background:`${T.accent}15`,borderRadius:8,padding:'8px 12px',textAlign:'center'}}>
+                <div style={{fontSize:11,fontWeight:800,color:T.accent,marginBottom:4}}>👦 BOYS ({bStr} strength)</div>
+                <div style={{display:'flex',justifyContent:'space-around'}}>
+                  <div><div style={{fontSize:17,fontWeight:900,color:T.green}}>{bpAll}</div><div style={{fontSize:9,color:T.sub}}>PRESENT</div></div>
+                  <div><div style={{fontSize:17,fontWeight:900,color:T.red}}>{maxB-bpAll}</div><div style={{fontSize:9,color:T.sub}}>ABSENT</div></div>
+                </div>
+              </div>
+              <div style={{background:`${T.orange}15`,borderRadius:8,padding:'8px 12px',textAlign:'center'}}>
+                <div style={{fontSize:11,fontWeight:800,color:T.orange,marginBottom:4}}>👧 GIRLS ({gStr} strength)</div>
+                <div style={{display:'flex',justifyContent:'space-around'}}>
+                  <div><div style={{fontSize:17,fontWeight:900,color:T.green}}>{gpAll}</div><div style={{fontSize:9,color:T.sub}}>PRESENT</div></div>
+                  <div><div style={{fontSize:17,fontWeight:900,color:T.red}}>{maxG-gpAll}</div><div style={{fontSize:9,color:T.sub}}>ABSENT</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Per-class cards */}
+      {sorted.map(cls=>{
+        let bp=0,gp=0,daysEntered=0;
+        workDays.forEach(date=>{const d=attendance[date]?.[cls.id];if(d&&(d.bp!==undefined||d.gp!==undefined)){bp+=d.bp||0;gp+=d.gp||0;daysEntered++;}});
+        const tot=cls.boys+cls.girls,maxSlots=workDays.length*tot;
+        const pres=bp+gp,pct=maxSlots>0?Math.round(pres/maxSlots*100):null,pc=pctColor(pct);
+        const bPct=workDays.length*cls.boys>0?Math.round(bp/(workDays.length*cls.boys)*100):null;
+        const gPct=workDays.length*cls.girls>0?Math.round(gp/(workDays.length*cls.girls)*100):null;
+        return(
+          <div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,overflow:'hidden'}}>
+            <div style={{padding:'16px 18px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontWeight:900,fontSize:17,color:T.text}}>{cls.name}</div>
+                  <div style={{fontSize:12,color:T.sub,marginTop:2}}>{daysEntered}/{workDays.length} days entered · {tot} students</div>
+                </div>
+                <div style={{fontSize:28,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div>
+              </div>
+              {pct!==null&&<PctBar pct={pct}/>}
+            </div>
+            <div style={{borderTop:`1px solid ${T.border}`,padding:'12px 18px'}}>
+              <GenderRow icon="👦" label="Boys" color={T.accent} present={bp} absent={workDays.length*cls.boys-bp} total={cls.boys} pct={bPct}/>
+              <GenderRow icon="👧" label="Girls" color={T.orange} present={gp} absent={workDays.length*cls.girls-gp} total={cls.girls} pct={gPct}/>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:8,marginTop:2}}>
+                <span style={{fontSize:12,fontWeight:800,color:T.sub}}>Overall</span>
+                <div style={{display:'flex',gap:12,fontSize:13,fontWeight:800}}>
+                  <span style={{color:T.green}}>P: {pres}</span>
+                  <span style={{color:T.red}}>A: {maxSlots-pres}</span>
+                  <span style={{color:T.text}}>{maxSlots} slots</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /* ════════════════════════════════════════
@@ -349,56 +504,128 @@ function AdminDashboard({user,classes,setClasses,holidays,setHolidays,attendance
 }
 
 /* ════════════════════════════════════════
-   TEACHER — TODAY
+   TEACHER — TODAY  (boys/girls present input, absent auto)
 ════════════════════════════════════════ */
 function TeacherToday({classes,selectedClass,holidays,attendance,setAttendance}){
   const[date,setDate]=useState(todayKey());
   const hSet=new Set(holidays.map(h=>h.date));
   const isHoliday=hSet.has(date)||isSunday(date);
   const cls=classes.find(c=>c.id===selectedClass);
-  const dayAtt=(cls&&attendance[date]?.[cls.id])||{};
-  const present=cls?cls.students.filter(s=>dayAtt[s.id]==='P').length:0;
-  const total=cls?cls.students.length:0;
-  const markAll=status=>{if(!cls||isHoliday)return;setAttendance(p=>{const day={...(p[date]||{})},ca={...(day[cls.id]||{})};cls.students.forEach(s=>{ca[s.id]=status;});day[cls.id]=ca;return{...p,[date]:day};});};
-  const toggle=sid=>{if(!cls||isHoliday)return;setAttendance(p=>{const day={...(p[date]||{})},ca={...(day[cls.id]||{})};ca[sid]=ca[sid]==='P'?'A':'P';day[cls.id]=ca;return{...p,[date]:day};});};
-  return<div>
-    <div style={{marginBottom:16}}>
-      <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Date</label>
-      <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none'}}/>
-    </div>
-    {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15}}>
-      {isSunday(date)?'🔵 Sunday — No Attendance Required':'🎉 Holiday — School Closed'}
-      <div style={{fontSize:12,fontWeight:600,color:T.sub,marginTop:4}}>{holidays.find(h=>h.date===date)?.reason||''}</div>
-    </div>}
-    {!cls&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>Please select a class above.</div>}
-    {cls&&!isHoliday&&<>
-      <div style={{display:'flex',justifyContent:'space-around',background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 10px',marginBottom:16}}>
-        <Stat value={present} label="PRESENT" color={T.green}/>
-        <Stat value={total-present} label="ABSENT" color={T.red}/>
-        <Stat value={total} label="TOTAL" color={T.text}/>
-        <Stat value={total>0?`${Math.round(present/total*100)}%`:'—'} label="RATE" color={T.yellow}/>
+  const dayAtt=cls?attendance[date]?.[cls.id]||{}:{};
+  const bp=dayAtt.bp!==undefined?dayAtt.bp:'';
+  const gp=dayAtt.gp!==undefined?dayAtt.gp:'';
+  const hasData=bp!==''||gp!=='';
+  const bpN=bp===''?0:parseInt(bp);
+  const gpN=gp===''?0:parseInt(gp);
+  const baN=cls?Math.max(0,cls.boys-bpN):0;
+  const gaN=cls?Math.max(0,cls.girls-gpN):0;
+  const totS=cls?cls.boys+cls.girls:0;
+  const totP=bpN+gpN,totA=baN+gaN;
+  const pct=totS>0?Math.round(totP/totS*100):null;
+
+  const save=(field,val)=>{
+    if(!cls||isHoliday)return;
+    const max=field==='bp'?cls.boys:cls.girls;
+    const num=Math.min(max,Math.max(0,parseInt(val)||0));
+    setAttendance(p=>{const day={...(p[date]||{})},ca={...(day[cls.id]||{})};ca[field]=num;day[cls.id]=ca;return{...p,[date]:day};});
+  };
+
+  const inputStyle=(color)=>({
+    background:T.card2,color,border:`2px solid ${color}66`,borderRadius:10,
+    padding:'8px 4px',fontSize:26,fontWeight:900,fontFamily:"'Nunito',sans-serif",
+    width:'100%',outline:'none',textAlign:'center',boxSizing:'border-box'
+  });
+  const autoBox=(color,val)=>(
+    <div style={{background:T.surface,border:`2px solid ${color}33`,borderRadius:10,padding:'8px 4px',fontSize:26,fontWeight:900,color,textAlign:'center',display:'flex',alignItems:'center',justifyContent:'center',minHeight:52}}>{val}</div>
+  );
+
+  return(
+    <div>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Date</label>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none'}}/>
       </div>
-      <div style={{display:'flex',gap:8,marginBottom:14}}>
-        <Btn full sm onClick={()=>markAll('P')} color={T.green} text={T.bg}>✓ All Present</Btn>
-        <Btn full sm onClick={()=>markAll('A')} color={T.red}>✗ All Absent</Btn>
-      </div>
-      {cls.students.map((st,i)=>{
-        const mk=dayAtt[st.id],isP=mk==='P',isA=mk==='A';
-        return<div key={st.id} onClick={()=>toggle(st.id)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:isP?`${T.green}18`:isA?`${T.red}18`:T.card,border:`1.5px solid ${isP?T.green:isA?T.red:T.border}`,borderRadius:12,padding:'13px 16px',marginBottom:8,cursor:'pointer'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{width:34,height:34,borderRadius:'50%',background:isP?T.green:isA?T.red:T.surface,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:13,color:T.bg}}>{i+1}</div>
-            <span style={{fontWeight:700,fontSize:15,color:T.text}}>{st.name}</span>
+
+      {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15}}>
+        {isSunday(date)?'🔵 Sunday — No Attendance Required':'🎉 Holiday — School Closed'}
+        <div style={{fontSize:12,fontWeight:600,color:T.sub,marginTop:4}}>{holidays.find(h=>h.date===date)?.reason||''}</div>
+      </div>}
+
+      {!cls&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>Please select a class above.</div>}
+
+      {cls&&!isHoliday&&<>
+        {/* Summary bar */}
+        <div style={{display:'flex',justifyContent:'space-around',background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 10px',marginBottom:14}}>
+          <Stat value={hasData?totP:'—'} label="PRESENT" color={T.green}/>
+          <Stat value={hasData?totA:'—'} label="ABSENT" color={T.red}/>
+          <Stat value={totS} label="TOTAL" color={T.text}/>
+          <Stat value={hasData&&pct!==null?`${pct}%`:'—'} label="RATE" color={T.yellow}/>
+        </div>
+
+        {/* BOYS card */}
+        <div style={{background:T.card,border:`1px solid ${T.accent}44`,borderRadius:16,padding:'14px 16px',marginBottom:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <span style={{fontSize:15,fontWeight:900,color:T.accent}}>👦 Boys</span>
+            <Badge color={T.accent}>Strength: {cls.boys}</Badge>
           </div>
-          <div style={{width:38,height:38,borderRadius:10,background:isP?T.green:isA?T.red:T.surface,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:18,color:(isP||isA)?T.bg:T.muted}}>{isP?'P':isA?'A':'?'}</div>
-        </div>;
-      })}
-      {cls.students.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:13,padding:'20px 0'}}>No students. Ask admin to add students.</div>}
-    </>}
-  </div>;
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>✏️ Present</div>
+              <input type="number" min="0" max={cls.boys} value={bp} placeholder="—" onChange={e=>save('bp',e.target.value)} style={inputStyle(T.green)}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:T.red,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>⚡ Absent</div>
+              {autoBox(T.red,bp!==''?baN:'—')}
+            </div>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:T.accent,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>📊 Total</div>
+              {autoBox(T.accent,cls.boys)}
+            </div>
+          </div>
+        </div>
+
+        {/* GIRLS card */}
+        <div style={{background:T.card,border:`1px solid ${T.orange}44`,borderRadius:16,padding:'14px 16px',marginBottom:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <span style={{fontSize:15,fontWeight:900,color:T.orange}}>👧 Girls</span>
+            <Badge color={T.orange}>Strength: {cls.girls}</Badge>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>✏️ Present</div>
+              <input type="number" min="0" max={cls.girls} value={gp} placeholder="—" onChange={e=>save('gp',e.target.value)} style={inputStyle(T.green)}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:T.red,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>⚡ Absent</div>
+              {autoBox(T.red,gp!==''?gaN:'—')}
+            </div>
+            <div>
+              <div style={{fontSize:10,fontWeight:800,color:T.orange,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>📊 Total</div>
+              {autoBox(T.orange,cls.girls)}
+            </div>
+          </div>
+        </div>
+
+        {/* Combined result */}
+        {hasData&&(
+          <div style={{background:`linear-gradient(135deg,${T.green}12,${T.accent}12)`,border:`1px solid ${T.green}33`,borderRadius:14,padding:'14px 16px'}}>
+            <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:10,letterSpacing:'0.05em'}}>OVERALL — {cls.name} · {fmtDate(date)}</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,textAlign:'center',marginBottom:8}}>
+              <div><div style={{fontSize:22,fontWeight:900,color:T.green}}>{totP}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>PRESENT</div></div>
+              <div><div style={{fontSize:22,fontWeight:900,color:T.red}}>{totA}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>ABSENT</div></div>
+              <div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{totS}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>TOTAL</div></div>
+              <div><div style={{fontSize:22,fontWeight:900,color:pctColor(pct)}}>{pct!==null?`${pct}%`:'—'}</div><div style={{fontSize:9,color:T.sub,fontWeight:700}}>RATE</div></div>
+            </div>
+            {pct!==null&&<PctBar pct={pct}/>}
+          </div>
+        )}
+      </>}
+    </div>
+  );
 }
 
 /* ════════════════════════════════════════
-   TEACHER — MONTHLY
+   TEACHER — MONTHLY  (daily grid + boys/girls breakdown)
 ════════════════════════════════════════ */
 function TeacherMonthly({classes,selectedClass,holidays,attendance}){
   const now=new Date();
@@ -406,29 +633,59 @@ function TeacherMonthly({classes,selectedClass,holidays,attendance}){
   const cls=classes.find(c=>c.id===selectedClass);
   const workDays=useMemo(()=>getWorkingDays(vp.y,vp.m,holidays),[vp,holidays]);
   if(!cls)return<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>Please select a class above.</div>;
-  return<div>
-    <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
-    <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
-    {(()=>{let total=0,p=0;workDays.forEach(date=>cls.students.forEach(st=>{total++;if(attendance[date]?.[cls.id]?.[st.id]==='P')p++;}));const pct=total>0?Math.round(p/total*100):null;
-    return<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 18px',marginBottom:16}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:12,color:T.sub}}>Class average this month</div></div><div style={{fontSize:28,fontWeight:900,color:pctColor(pct)}}>{pct!==null?`${pct}%`:'—'}</div></div>
-      {pct!==null&&<PctBar pct={pct}/>}
-    </div>;})()}
-    {cls.students.map(st=>{
-      let p=0,a=0;workDays.forEach(date=>{const mk=attendance[date]?.[cls.id]?.[st.id];if(mk==='P')p++;else if(mk==='A')a++;});
-      const filled=p+a,pct=filled>0?Math.round(p/filled*100):null,pc=pctColor(pct);
-      return<div key={st.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 16px',marginBottom:10}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><span style={{fontWeight:800,fontSize:14,color:T.text}}>{st.name}</span><span style={{fontWeight:900,fontSize:16,color:pc}}>{pct!==null?`${pct}%`:'—'}</span></div>
-        {filled>0&&<PctBar pct={pct}/>}
-        <div style={{display:'flex',gap:16,fontSize:12,marginBottom:10}}><span style={{color:T.green,fontWeight:700}}>Present: {p}</span><span style={{color:T.red,fontWeight:700}}>Absent: {a}</span>{workDays.length-filled>0&&<span style={{color:T.muted}}>Unmarked: {workDays.length-filled}</span>}</div>
-        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-          {workDays.map(date=>{const mk=attendance[date]?.[cls.id]?.[st.id],d=new Date(date+'T12:00:00').getDate();
-          return<div key={date} title={`${fmtDate(date)}: ${mk||'Unmarked'}`} style={{width:28,height:28,borderRadius:6,background:mk==='P'?`${T.green}33`:mk==='A'?`${T.red}33`:T.surface,border:`1px solid ${mk==='P'?T.green:mk==='A'?T.red:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:mk==='P'?T.green:mk==='A'?T.red:T.muted}}>{d}</div>;
+  const tot=cls.boys+cls.girls;
+  let monthBP=0,monthGP=0,daysEntered=0;
+  workDays.forEach(date=>{const d=attendance[date]?.[cls.id];if(d&&(d.bp!==undefined||d.gp!==undefined)){monthBP+=d.bp||0;monthGP+=d.gp||0;daysEntered++;}});
+  const monthP=monthBP+monthGP,maxSlots=workDays.length*tot;
+  const monthPct=maxSlots>0?Math.round(monthP/maxSlots*100):null;
+  const bPct=workDays.length*cls.boys>0?Math.round(monthBP/(workDays.length*cls.boys)*100):null;
+  const gPct=workDays.length*cls.girls>0?Math.round(monthGP/(workDays.length*cls.girls)*100):null;
+
+  return(
+    <div>
+      <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
+      <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
+
+      {/* Monthly overview */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 18px',marginBottom:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div>
+            <div style={{fontSize:12,color:T.sub}}>{daysEntered}/{workDays.length} days entered · {tot} students</div>
+          </div>
+          <div style={{fontSize:28,fontWeight:900,color:pctColor(monthPct)}}>{monthPct!==null?`${monthPct}%`:'—'}</div>
+        </div>
+        {monthPct!==null&&<PctBar pct={monthPct}/>}
+        <GenderRow icon="👦" label="Boys" color={T.accent} present={monthBP} absent={workDays.length*cls.boys-monthBP} total={cls.boys} pct={bPct}/>
+        <GenderRow icon="👧" label="Girls" color={T.orange} present={monthGP} absent={workDays.length*cls.girls-monthGP} total={cls.girls} pct={gPct}/>
+      </div>
+
+      {/* Daily grid */}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 18px'}}>
+        <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:10,letterSpacing:'0.05em'}}>DAILY ATTENDANCE — tap a day for details</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+          {workDays.map(date=>{
+            const d=attendance[date]?.[cls.id];
+            const hasD=d&&(d.bp!==undefined||d.gp!==undefined);
+            const bp=hasD?d.bp||0:null,gp=hasD?d.gp||0:null;
+            const tp=hasD?bp+gp:null;
+            const dayPct=hasD&&tot>0?Math.round(tp/tot*100):null;
+            const dc=pctColor(dayPct);
+            const day=new Date(date+'T12:00:00').getDate();
+            return(
+              <div key={date} title={hasD?`${fmtDate(date)}\nBoys: ${bp}P / ${cls.boys-bp}A\nGirls: ${gp}P / ${cls.girls-gp}A\n${dayPct}%`:`${fmtDate(date)}: Not entered`}
+                style={{width:40,height:40,borderRadius:8,background:hasD?`${dc}33`:T.surface,border:`1.5px solid ${hasD?dc:T.border}`,
+                  display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:800,color:hasD?dc:T.muted,cursor:'default',userSelect:'none'}}>
+                <div>{day}</div>
+                {hasD&&<div style={{fontSize:9,fontWeight:700}}>{dayPct}%</div>}
+              </div>
+            );
           })}
         </div>
-      </div>;
-    })}
-  </div>;
+        {daysEntered===0&&<div style={{textAlign:'center',color:T.muted,fontSize:13,paddingTop:12}}>No attendance entered yet for this month.</div>}
+      </div>
+    </div>
+  );
 }
 
 /* ════════════════════════════════════════
@@ -441,11 +698,12 @@ function TeacherDashboard({user,classes,holidays,attendance,setAttendance,onLogo
   return<div style={SS}><Header user={user} onLogout={onLogout}/>
     <div style={{padding:'16px 16px 90px'}}>
       <div style={{marginBottom:16}}>
-        <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:8}}>Your Class</label>
-        {classes.length===0?<div style={{color:T.muted,fontSize:13}}>No classes yet. Ask admin to create classes.</div>
+        <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:8}}>Select Class</label>
+        {classes.length===0
+          ?<div style={{color:T.muted,fontSize:13}}>No classes yet. Ask admin to create classes.</div>
           :<div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-            {classes.map(c=><button key={c.id} onClick={()=>setCls(c.id)} style={{background:cls===c.id?T.accent:T.card,color:cls===c.id?T.bg:T.text,border:`1.5px solid ${cls===c.id?T.accent:T.border}`,borderRadius:10,padding:'9px 18px',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
-              {c.name}<span style={{fontSize:11,marginLeft:6,opacity:0.7}}>({c.students.length})</span>
+            {sortClasses(classes).map(c=><button key={c.id} onClick={()=>setCls(c.id)} style={{background:cls===c.id?T.accent:T.card,color:cls===c.id?T.bg:T.text,border:`1.5px solid ${cls===c.id?T.accent:T.border}`,borderRadius:10,padding:'9px 16px',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:"'Nunito',sans-serif"}}>
+              {c.name}<span style={{fontSize:11,marginLeft:5,opacity:0.7}}>({c.boys+c.girls})</span>
             </button>)}
           </div>
         }
@@ -458,81 +716,173 @@ function TeacherDashboard({user,classes,holidays,attendance,setAttendance,onLogo
 }
 
 /* ════════════════════════════════════════
-   PRINCIPAL — TODAY
+   PRINCIPAL — TODAY  (per-class boys/girls breakdown)
 ════════════════════════════════════════ */
 function PrincipalToday({classes,holidays,attendance}){
   const[date,setDate]=useState(todayKey());
   const hSet=new Set(holidays.map(h=>h.date));
   const isHoliday=hSet.has(date)||isSunday(date);
-  const totals=useMemo(()=>{let p=0,t=0;classes.forEach(cls=>cls.students.forEach(st=>{t++;if(attendance[date]?.[cls.id]?.[st.id]==='P')p++;}));return{p,t};},[classes,attendance,date]);
-  return<div>
-    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>All Classes — Today</div>
-    <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',marginBottom:16}}/>
-    {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15,marginBottom:16}}>{isSunday(date)?'🔵 Sunday — No School':'🎉 Holiday — School Closed'}</div>}
-    {!isHoliday&&classes.length>0&&<div style={{background:`linear-gradient(135deg,${T.accent}15,${T.indigo}15)`,border:`1px solid ${T.accent}33`,borderRadius:14,display:'flex',justifyContent:'space-around',padding:'14px 10px',marginBottom:16}}>
-      <Stat value={totals.p} label="PRESENT" color={T.green}/><Stat value={totals.t-totals.p} label="ABSENT" color={T.red}/><Stat value={totals.t} label="TOTAL" color={T.text}/><Stat value={totals.t>0?`${Math.round(totals.p/totals.t*100)}%`:'—'} label="RATE" color={T.yellow}/>
-    </div>}
-    {!isHoliday&&classes.map(cls=>{
-      const dayAtt=attendance[date]?.[cls.id]||{};
-      const p=cls.students.filter(s=>dayAtt[s.id]==='P').length,t=cls.students.length;
-      const pct=t>0?Math.round(p/t*100):null,pc=pctColor(pct);
-      return<div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,padding:'16px 18px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:26,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div></div>
-        {pct!==null&&<PctBar pct={pct}/>}
-        <div style={{fontSize:12,color:T.sub,marginBottom:14}}>{p} present / {t-p} absent / {t} total</div>
-        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-          {cls.students.map(st=>{const mk=dayAtt[st.id];return<div key={st.id} style={{background:mk==='P'?`${T.green}22`:mk==='A'?`${T.red}22`:T.surface,border:`1px solid ${mk==='P'?T.green:mk==='A'?T.red:T.border}`,borderRadius:8,padding:'4px 10px',fontSize:12,fontWeight:700,color:mk==='P'?T.green:mk==='A'?T.red:T.muted}}>{st.name.split(' ')[0]}<span style={{marginLeft:4,opacity:0.8}}>{mk||'?'}</span></div>;})}
-        </div>
-      </div>;
-    })}
-    {classes.length===0&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>No classes created yet.</div>}
-  </div>;
+
+  const schoolTotals=useMemo(()=>{
+    let bp=0,gp=0,bs=0,gs=0;
+    classes.forEach(cls=>{const d=attendance[date]?.[cls.id]||{};bp+=d.bp||0;gp+=d.gp||0;bs+=cls.boys;gs+=cls.girls;});
+    const tot=bs+gs,pres=bp+gp;
+    return{bp,gp,bs,gs,tot,pres,pct:tot>0?Math.round(pres/tot*100):null};
+  },[classes,attendance,date]);
+
+  return(
+    <div>
+      <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>All Classes — Today</div>
+      <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',marginBottom:16}}/>
+
+      {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15,marginBottom:16}}>{isSunday(date)?'🔵 Sunday — No School':'🎉 Holiday — School Closed'}</div>}
+
+      {/* School-wide today summary */}
+      {!isHoliday&&classes.length>0&&(()=>{
+        const{bp,gp,bs,gs,tot,pres,pct}=schoolTotals;
+        const bPct=bs>0?Math.round(bp/bs*100):null,gPct=gs>0?Math.round(gp/gs*100):null;
+        return(
+          <div style={{background:`linear-gradient(135deg,${T.accent}15,${T.indigo}15)`,border:`1px solid ${T.accent}33`,borderRadius:14,padding:'14px 16px',marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:800,color:T.sub,marginBottom:10,letterSpacing:'0.04em'}}>SCHOOL-WIDE · {fmtDate(date)}</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:4,textAlign:'center',marginBottom:10}}>
+              <Stat value={pres} label="PRESENT" color={T.green}/>
+              <Stat value={tot-pres} label="ABSENT" color={T.red}/>
+              <Stat value={tot} label="TOTAL" color={T.text}/>
+              <Stat value={pct!==null?`${pct}%`:'—'} label="RATE" color={T.yellow}/>
+            </div>
+            {pct!==null&&<PctBar pct={pct}/>}
+            <GenderRow icon="👦" label="Boys" color={T.accent} present={bp} absent={bs-bp} total={bs} pct={bPct}/>
+            <GenderRow icon="👧" label="Girls" color={T.orange} present={gp} absent={gs-gp} total={gs} pct={gPct}/>
+          </div>
+        );
+      })()}
+
+      {/* Per-class cards */}
+      {!isHoliday&&sortClasses(classes).map(cls=>{
+        const d=attendance[date]?.[cls.id]||{};
+        const bp=d.bp!==undefined?d.bp:null,gp=d.gp!==undefined?d.gp:null;
+        const hasData=bp!==null||gp!==null;
+        const bpN=bp||0,gpN=gp||0;
+        const tot=cls.boys+cls.girls,pres=bpN+gpN;
+        const pct=hasData&&tot>0?Math.round(pres/tot*100):null,pc=pctColor(pct);
+        const bPct=hasData&&cls.boys>0?Math.round(bpN/cls.boys*100):null;
+        const gPct=hasData&&cls.girls>0?Math.round(gpN/cls.girls*100):null;
+        return(
+          <div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,padding:'16px 18px'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+              <div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                {!hasData&&<Badge color={T.muted}>Not Entered</Badge>}
+                <div style={{fontSize:26,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div>
+              </div>
+            </div>
+            {pct!==null&&<PctBar pct={pct}/>}
+            {hasData
+              ?<>
+                <GenderRow icon="👦" label="Boys" color={T.accent} present={bpN} absent={cls.boys-bpN} total={cls.boys} pct={bPct}/>
+                <GenderRow icon="👧" label="Girls" color={T.orange} present={gpN} absent={cls.girls-gpN} total={cls.girls} pct={gPct}/>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:12,fontWeight:800,paddingTop:8,marginTop:2}}>
+                  <span style={{color:T.sub}}>Total</span>
+                  <div style={{display:'flex',gap:12}}><span style={{color:T.green}}>P: {pres}</span><span style={{color:T.red}}>A: {tot-pres}</span><span style={{color:T.text}}>{tot}</span></div>
+                </div>
+              </>
+              :<div style={{fontSize:12,color:T.muted,marginTop:6}}>Strength: 👦 {cls.boys} boys · 👧 {cls.girls} girls · Total {tot}</div>
+            }
+          </div>
+        );
+      })}
+      {classes.length===0&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>No classes created yet.</div>}
+    </div>
+  );
 }
 
 /* ════════════════════════════════════════
-   PRINCIPAL — MONTHLY
+   PRINCIPAL — MONTHLY  (per-class boys/girls monthly)
 ════════════════════════════════════════ */
 function PrincipalMonthly({classes,holidays,attendance}){
   const now=new Date();
   const[vp,setVp]=useState({y:now.getFullYear(),m:now.getMonth()});
   const workDays=useMemo(()=>getWorkingDays(vp.y,vp.m,holidays),[vp,holidays]);
-  const schoolTotal=useMemo(()=>{let p=0,t=0;workDays.forEach(date=>classes.forEach(cls=>cls.students.forEach(st=>{t++;if(attendance[date]?.[cls.id]?.[st.id]==='P')p++;})));return{p,t,pct:t>0?Math.round(p/t*100):null};},[workDays,classes,attendance]);
-  return<div>
-    <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Monthly — All Classes</div>
-    <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
-    <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
-    {classes.length>0&&<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'16px 18px',marginBottom:20}}>
-      <div style={{fontSize:13,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.04em'}}>SCHOOL-WIDE AVERAGE</div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontSize:13,color:T.sub}}>{schoolTotal.p} present of {schoolTotal.t} slots</div><div style={{fontSize:32,fontWeight:900,color:pctColor(schoolTotal.pct)}}>{schoolTotal.pct!==null?`${schoolTotal.pct}%`:'—'}</div></div>
-      {schoolTotal.pct!==null&&<PctBar pct={schoolTotal.pct}/>}
-    </div>}
-    {classes.map(cls=>{
-      let clsP=0,clsT=0;workDays.forEach(date=>cls.students.forEach(st=>{clsT++;if(attendance[date]?.[cls.id]?.[st.id]==='P')clsP++;}));
-      const pct=clsT>0?Math.round(clsP/clsT*100):null,pc=pctColor(pct);
-      const dayBars=workDays.map(date=>{const dp=cls.students.filter(s=>attendance[date]?.[cls.id]?.[s.id]==='P').length,dt=cls.students.length;return{date,p:dp,t:dt,pct:dt>0?Math.round(dp/dt*100):null};});
-      return<div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,overflow:'hidden'}}>
-        <div style={{padding:'16px 18px'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div><div style={{fontSize:26,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div></div>
-          {pct!==null&&<PctBar pct={pct}/>}
-          <div style={{display:'flex',gap:16,fontSize:12}}><span style={{color:T.text}}>{cls.students.length} students</span><span style={{color:T.green,fontWeight:700}}>P:{clsP}</span><span style={{color:T.red,fontWeight:700}}>A:{clsT-clsP}</span></div>
-        </div>
-        <div style={{padding:'0 18px 16px',display:'flex',flexWrap:'wrap',gap:4}}>
-          {dayBars.map(({date,pct:dp,p,t})=>{const d=new Date(date+'T12:00:00').getDate(),dc=pctColor(dp);
-          return<div key={date} title={`${fmtDate(date)}: ${p}/${t}`} style={{width:30,height:30,borderRadius:6,background:dp!==null?`${dc}33`:T.surface,border:`1px solid ${dp!==null?dc:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:dp!==null?dc:T.muted}}>{d}</div>;
-          })}
-        </div>
-        <div style={{borderTop:`1px solid ${T.border}`,padding:'12px 18px'}}>
-          <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.05em'}}>STUDENT-WISE</div>
-          {cls.students.map(st=>{let p=0,a=0;workDays.forEach(date=>{const mk=attendance[date]?.[cls.id]?.[st.id];if(mk==='P')p++;else if(mk==='A')a++;});const sp=(p+a)>0?Math.round(p/(p+a)*100):null;
-          return<div key={st.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:`1px solid ${T.border}22`}}>
-            <span style={{fontSize:13,color:T.text,fontWeight:600}}>{st.name}</span>
-            <div style={{display:'flex',gap:10,alignItems:'center'}}><span style={{fontSize:12,color:T.green,fontWeight:700}}>P:{p}</span><span style={{fontSize:12,color:T.red,fontWeight:700}}>A:{a}</span><span style={{fontSize:14,fontWeight:900,color:pctColor(sp),minWidth:38,textAlign:'right'}}>{sp!==null?`${sp}%`:'—'}</span></div>
-          </div>;})}
-        </div>
-      </div>;
-    })}
-    {classes.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:14,padding:'40px 0'}}>No classes available.</div>}
-  </div>;
+
+  const schoolTotal=useMemo(()=>{
+    let bpAll=0,gpAll=0,bStr=0,gStr=0;
+    classes.forEach(cls=>{
+      bStr+=cls.boys;gStr+=cls.girls;
+      workDays.forEach(date=>{const d=attendance[date]?.[cls.id]||{};bpAll+=d.bp||0;gpAll+=d.gp||0;});
+    });
+    const maxB=workDays.length*bStr,maxG=workDays.length*gStr;
+    const pres=bpAll+gpAll,total=maxB+maxG;
+    return{bpAll,gpAll,bStr,gStr,maxB,maxG,pres,total,pct:total>0?Math.round(pres/total*100):null};
+  },[workDays,classes,attendance]);
+
+  return(
+    <div>
+      <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:16}}>Monthly — All Classes</div>
+      <MonthNav y={vp.y} m={vp.m} onChange={setVp}/>
+      <WDStrip y={vp.y} m={vp.m} holidays={holidays}/>
+
+      {/* School-wide monthly */}
+      {classes.length>0&&(()=>{
+        const{bpAll,gpAll,bStr,gStr,maxB,maxG,pres,total,pct}=schoolTotal;
+        const bPct=maxB>0?Math.round(bpAll/maxB*100):null,gPct=maxG>0?Math.round(gpAll/maxG*100):null;
+        return(
+          <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'16px 18px',marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.sub,marginBottom:8,letterSpacing:'0.04em'}}>SCHOOL-WIDE AVERAGE</div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:13,color:T.sub}}>{pres} present of {total} slots</div>
+              <div style={{fontSize:32,fontWeight:900,color:pctColor(pct)}}>{pct!==null?`${pct}%`:'—'}</div>
+            </div>
+            {pct!==null&&<PctBar pct={pct}/>}
+            <GenderRow icon="👦" label="Boys" color={T.accent} present={bpAll} absent={maxB-bpAll} total={bStr} pct={bPct}/>
+            <GenderRow icon="👧" label="Girls" color={T.orange} present={gpAll} absent={maxG-gpAll} total={gStr} pct={gPct}/>
+          </div>
+        );
+      })()}
+
+      {/* Per-class monthly cards */}
+      {sortClasses(classes).map(cls=>{
+        let bp=0,gp=0,daysEntered=0;
+        workDays.forEach(date=>{const d=attendance[date]?.[cls.id];if(d&&(d.bp!==undefined||d.gp!==undefined)){bp+=d.bp||0;gp+=d.gp||0;daysEntered++;}});
+        const tot=cls.boys+cls.girls,maxSlots=workDays.length*tot,pres=bp+gp;
+        const pct=maxSlots>0?Math.round(pres/maxSlots*100):null,pc=pctColor(pct);
+        const bPct=workDays.length*cls.boys>0?Math.round(bp/(workDays.length*cls.boys)*100):null;
+        const gPct=workDays.length*cls.girls>0?Math.round(gp/(workDays.length*cls.girls)*100):null;
+
+        const dayBars=workDays.map(date=>{
+          const d=attendance[date]?.[cls.id];
+          const hasD=d&&(d.bp!==undefined||d.gp!==undefined);
+          const tp=hasD?(d.bp||0)+(d.gp||0):null;
+          return{date,tp,pct:hasD&&tot>0?Math.round(tp/tot*100):null,hasD};
+        });
+
+        return(
+          <div key={cls.id} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,marginBottom:14,overflow:'hidden'}}>
+            <div style={{padding:'16px 18px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontWeight:900,fontSize:16,color:T.text}}>{cls.name}</div>
+                  <div style={{fontSize:12,color:T.sub,marginTop:2}}>{daysEntered}/{workDays.length} days entered · {tot} students</div>
+                </div>
+                <div style={{fontSize:26,fontWeight:900,color:pc}}>{pct!==null?`${pct}%`:'—'}</div>
+              </div>
+              {pct!==null&&<PctBar pct={pct}/>}
+              <GenderRow icon="👦" label="Boys" color={T.accent} present={bp} absent={workDays.length*cls.boys-bp} total={cls.boys} pct={bPct}/>
+              <GenderRow icon="👧" label="Girls" color={T.orange} present={gp} absent={workDays.length*cls.girls-gp} total={cls.girls} pct={gPct}/>
+            </div>
+
+            {/* Daily mini-grid */}
+            <div style={{padding:'0 18px 16px',display:'flex',flexWrap:'wrap',gap:4}}>
+              {dayBars.map(({date,pct:dp,hasD})=>{
+                const d=new Date(date+'T12:00:00').getDate(),dc=pctColor(dp);
+                return<div key={date} title={fmtDate(date)} style={{width:30,height:30,borderRadius:6,background:hasD?`${dc}33`:T.surface,border:`1px solid ${hasD?dc:T.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:hasD?dc:T.muted}}>{d}</div>;
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {classes.length===0&&<div style={{textAlign:'center',color:T.muted,fontSize:14,padding:'40px 0'}}>No classes available.</div>}
+    </div>
+  );
 }
 
 /* ════════════════════════════════════════
@@ -555,9 +905,9 @@ function PrincipalDashboard({user,classes,holidays,attendance,onLogout}){
 ════════════════════════════════════════ */
 function App(){
   const[auth,setAuth]=useState(null);
-  const[classes,   setClasses]   =useLs('edu_classes',   []);
+  const[classes,   setClasses]   =useLs('edu_classes2',  []);
   const[holidays,  setHolidays]  =useLs('edu_holidays',  []);
-  const[attendance,setAttendance]=useLs('edu_attendance',{});
+  const[attendance,setAttendance]=useLs('edu_attend2',   {});
   const login =(un,u)=>setAuth({un,u});
   const logout=()=>setAuth(null);
   if(!auth)return<LoginScreen onLogin={login}/>;
@@ -570,17 +920,6 @@ function App(){
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-</script>
-
-<!-- Service Worker -->
-<script>
-  if('serviceWorker' in navigator){
-    window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('./sw.js',{scope:'./'})
-        .then(r=>console.log('[SW] Registered',r.scope))
-        .catch(e=>console.warn('[SW] Failed',e));
-    });
-  }
 </script>
 </body>
 </html>
