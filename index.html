@@ -13,9 +13,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+  <!-- React -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html,body,#root{width:100%;height:100%;background:#0B1426;font-family:'Nunito','Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
@@ -27,8 +31,40 @@
 </head>
 <body>
 <div id="root"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+  🔥 STEP 1: PASTE YOUR FIREBASE CONFIG HERE
+  Go to: Firebase Console → Your Project → Project Settings
+  → "Your apps" → Web app → SDK setup → Config object
+  Replace the placeholder values below with your real values.
+════════════════════════════════════════════════════════ -->
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAPLOws0IvOsqkhuToHObqSDKUztM4iNbg",
+  authDomain: "eduattend-472f9.firebaseapp.com",
+  projectId: "eduattend-472f9",
+  storageBucket: "eduattend-472f9.firebasestorage.app",
+  messagingSenderId: "364290989706",
+  appId: "1:364290989706:web:c805996ae2f010f5a65773"
+};
+
+// Detect if config is still placeholder
+const FB_CONFIGURED = !Object.values(FIREBASE_CONFIG).some(v => v.startsWith("PASTE_"));
+
+let DB = null;
+if (FB_CONFIGURED) {
+  try {
+    const fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+    DB = firebase.database(fbApp);
+    console.log("✅ Firebase connected");
+  } catch(e) {
+    console.error("Firebase init error:", e);
+  }
+}
+</script>
+
 <script type="text/babel" data-presets="react">
-const{useState,useMemo,useEffect}=React;
+const{useState,useMemo,useEffect,useRef}=React;
 
 /* ── THEME ── */
 const T={bg:'#0B1426',surface:'#111F35',card:'#162236',card2:'#1C2D44',border:'#1E3A5F',border2:'#243B5E',text:'#F0F6FF',sub:'#94A3B8',muted:'#4A6080',accent:'#38BDF8',indigo:'#818CF8',green:'#34D399',red:'#F87171',yellow:'#FBBF24',orange:'#FB923C',pink:'#F472B6'};
@@ -37,7 +73,7 @@ const T={bg:'#0B1426',surface:'#111F35',card:'#162236',card2:'#1C2D44',border:'#
 const CLASS_LIST=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const DIV_LIST=Array.from({length:26},(_,i)=>String.fromCharCode(65+i));
 
-/* ── CHANGE 1 & 3: No real names, single teacher login ── */
+/* ── USERS ── */
 const USERS={
   admin:    {pw:'admin123', role:'admin',     color:T.indigo},
   teacher:  {pw:'teach123', role:'teacher',   color:T.accent},
@@ -58,17 +94,57 @@ const uid=()=>Math.random().toString(36).slice(2,9);
 const getWorkingDays=(y,m,holidays)=>{const hSet=new Set(holidays.map(h=>h.date));return monthDateKeys(y,m).filter(d=>!isSunday(d)&&!hSet.has(d));};
 const sortClasses=arr=>[...arr].sort((a,b)=>{const ai=CLASS_LIST.indexOf(a.className),bi=CLASS_LIST.indexOf(b.className);return ai!==bi?ai-bi:a.division.localeCompare(b.division);});
 
-/* ── CHANGE 2: Academic Year April=Month 1 ── */
-// JS month is 0-indexed. April=3 → Acad month 1 ... March=2 → Acad month 12
 const acadMonthNum=m=>m>=3?m-2:m+10;
 const acadYear=(y,m)=>m>=3?`${y}-${String(y+1).slice(2)}`:`${y-1}-${String(y).slice(2)}`;
 
-/* ── LOCAL STORAGE ── */
+/* ══════════════════════════════════════════════════════════
+   🔥 FIREBASE HOOK — replaces localStorage, syncs all devices
+   ══════════════════════════════════════════════════════════ */
+function useFirebase(path, init) {
+  const [v, setV]       = useState(init);
+  const [ready, setReady] = useState(!FB_CONFIGURED); // if no FB, skip loading
+  const latestV = useRef(v);
+  latestV.current = v;
+
+  useEffect(() => {
+    if (!DB) return; // no firebase → use in-memory only (fallback)
+    const ref = DB.ref(path);
+    const handler = snap => {
+      const val = snap.val();
+      if (val === null) {
+        setV(init);
+      } else {
+        // Firebase may convert arrays to objects with numeric keys — normalize
+        setV(Array.isArray(init) ? (Array.isArray(val) ? val : Object.values(val)) : val);
+      }
+      setReady(true);
+    };
+    ref.on('value', handler, err => { console.error('FB read error', err); setReady(true); });
+    return () => ref.off('value', handler);
+  }, [path]);
+
+  const set = val => {
+    setV(prev => {
+      const next = typeof val === 'function' ? val(prev) : val;
+      if (DB) {
+        DB.ref(path).set(next).catch(e => console.error('FB write error', e));
+      }
+      return next;
+    });
+  };
+
+  return [v, set, ready];
+}
+
+/* ── FALLBACK: localStorage hook (used when Firebase not configured) ── */
 function useLs(key,init){
   const[v,setV]=useState(()=>{try{const s=localStorage.getItem(key);return s?JSON.parse(s):init;}catch{return init;}});
   const set=val=>setV(prev=>{const next=typeof val==='function'?val(prev):val;try{localStorage.setItem(key,JSON.stringify(next));}catch{}return next;});
-  return[v,set];
+  return[v,set,true];
 }
+
+/* ── PICK HOOK based on Firebase availability ── */
+const useStore = FB_CONFIGURED ? useFirebase : useLs;
 
 /* ── UI HELPERS ── */
 const SS={minHeight:'100dvh',background:T.bg,fontFamily:"'Nunito',sans-serif",color:T.text,overflowX:'hidden'};
@@ -100,7 +176,6 @@ function Modal({open,onClose,title,children}){
 
 function Badge({children,color=T.accent}){return<span style={{background:color+'22',color,border:`1px solid ${color}44`,borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:800,letterSpacing:'0.04em'}}>{children}</span>;}
 
-/* ── CHANGE 4: Proper SVG Gender Icons ── */
 function BoyIcon({size=18,color=T.accent}){
   return<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="10" cy="14" r="5"/>
@@ -116,13 +191,29 @@ function GirlIcon({size=18,color=T.pink}){
   </svg>;
 }
 
-/* Header — shows role label, no personal name */
+/* ── SYNC STATUS INDICATOR ── */
+function SyncDot(){
+  const[status,setStatus]=useState('synced'); // 'synced' | 'syncing' | 'offline'
+  useEffect(()=>{
+    if(!FB_CONFIGURED){setStatus('local');return;}
+    const con=DB.ref('.info/connected');
+    con.on('value',snap=>{setStatus(snap.val()?'synced':'offline');});
+    return()=>con.off();
+  },[]);
+  const cfg={synced:{color:T.green,label:'Live Sync ●'},offline:{color:T.red,label:'Offline ●'},local:{color:T.yellow,label:'Local Only ●'}};
+  const c=cfg[status]||cfg.synced;
+  return<span style={{fontSize:10,fontWeight:800,color:c.color,letterSpacing:'0.04em'}}>{c.label}</span>;
+}
+
 function Header({user,onLogout}){
   const rLabel={admin:'ADMIN',teacher:'TEACHER',principal:'PRINCIPAL'}[user.role];
   return<div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:'13px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:200}}>
     <div>
       <div style={{fontSize:20,fontWeight:900,color:T.accent,letterSpacing:'-0.5px'}}>📋 EduAttend</div>
-      <div style={{fontSize:12,color:T.sub,marginTop:1}}>{ROLE_DISPLAY[user.role]}</div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:1}}>
+        <div style={{fontSize:12,color:T.sub}}>{ROLE_DISPLAY[user.role]}</div>
+        <SyncDot/>
+      </div>
     </div>
     <div style={{display:'flex',alignItems:'center',gap:10}}>
       <Badge color={user.color}>{rLabel}</Badge>
@@ -141,7 +232,6 @@ function TabBar({tabs,active,onChange}){
 
 function Stat({value,label,color=T.text}){return<div style={{textAlign:'center'}}><div style={{fontSize:24,fontWeight:900,color}}>{value}</div><div style={{fontSize:10,color:T.sub,fontWeight:700,marginTop:2}}>{label}</div></div>;}
 
-/* MonthNav — CHANGE 2: shows Academic Year + month number */
 function MonthNav({y,m,onChange}){
   const am=acadMonthNum(m),ay=acadYear(y,m);
   return<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'12px 18px',marginBottom:16}}>
@@ -166,7 +256,6 @@ function WDStrip({y,m,holidays}){
 
 function PctBar({pct}){const c=pctColor(pct);return<div style={{background:T.surface,borderRadius:6,height:8,marginTop:8,marginBottom:8}}><div style={{background:`linear-gradient(90deg,${c},${c}99)`,width:`${pct||0}%`,height:'100%',borderRadius:6,transition:'width .6s'}}/></div>;}
 
-/* GenderRow — uses SVG icons (CHANGE 4) */
 function GenderRow({gender,present,absent,total,pct}){
   const isBoy=gender==='boy';
   const color=isBoy?T.accent:T.pink;
@@ -184,7 +273,77 @@ function GenderRow({gender,present,absent,total,pct}){
 }
 
 /* ════════════════════════════════════════
-   LOGIN — 3 users only
+   FIREBASE SETUP GUIDE SCREEN
+════════════════════════════════════════ */
+function SetupGuide(){
+  const steps=[
+    {n:1,icon:'🌐',title:'Go to Firebase Console',desc:'Visit console.firebase.google.com and sign in with your Google account.'},
+    {n:2,icon:'➕',title:'Create a New Project',desc:'Click "Add project" → give it a name (e.g. EduAttend) → Continue. Disable Google Analytics if not needed.'},
+    {n:3,icon:'🗄️',title:'Enable Realtime Database',desc:'In left sidebar → Build → Realtime Database → Create Database → Choose location → Start in TEST MODE (rules: read/write = true).'},
+    {n:4,icon:'⚙️',title:'Register a Web App',desc:'Project Overview (⚙️ icon) → Project Settings → "Your apps" → </> Web icon → Register app → Copy the firebaseConfig object.'},
+    {n:5,icon:'📝',title:'Paste Config into this File',desc:'Open index.html in any text editor → Find the FIREBASE_CONFIG section near the top → Replace all PASTE_YOUR_...HERE values with the real ones from step 4.'},
+    {n:6,icon:'🚀',title:'Deploy & Done!',desc:'Drag the updated index.html to netlify.com/drop — all devices instantly share data!'},
+  ];
+  return<div style={{...SS,display:'flex',flexDirection:'column',alignItems:'center',padding:'24px 20px',overflowY:'auto'}}>
+    <div style={{width:'100%',maxWidth:480}}>
+      <div style={{textAlign:'center',marginBottom:32}}>
+        <div style={{fontSize:52,marginBottom:12}}>🔥</div>
+        <div style={{fontSize:28,fontWeight:900,color:T.text,letterSpacing:'-0.5px'}}>Firebase Setup Required</div>
+        <div style={{fontSize:14,color:T.sub,marginTop:8,lineHeight:1.6}}>
+          To sync attendance across devices, connect this app to your free Firebase Realtime Database.
+        </div>
+        <div style={{marginTop:16,background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'12px 16px',fontSize:12,color:T.yellow,fontWeight:700}}>
+          ⚠️ Firebase config is not filled in yet.<br/>Follow the steps below — takes about 5 minutes.
+        </div>
+      </div>
+      {steps.map(s=>(
+        <div key={s.n} style={{display:'flex',gap:14,marginBottom:20,background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:'16px 18px'}}>
+          <div style={{minWidth:36,height:36,borderRadius:12,background:`linear-gradient(135deg,${T.accent},${T.indigo})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>{s.icon}</div>
+          <div>
+            <div style={{fontWeight:900,fontSize:14,color:T.text,marginBottom:4}}>Step {s.n}: {s.title}</div>
+            <div style={{fontSize:12,color:T.sub,lineHeight:1.6}}>{s.desc}</div>
+          </div>
+        </div>
+      ))}
+      <div style={{background:`${T.green}15`,border:`1px solid ${T.green}44`,borderRadius:16,padding:'16px 18px',marginBottom:24}}>
+        <div style={{fontWeight:900,fontSize:14,color:T.green,marginBottom:8}}>✅ Free Firebase Limits (Spark Plan)</div>
+        <div style={{fontSize:12,color:T.sub,lineHeight:1.8}}>
+          📦 Storage: 1 GB &nbsp;|&nbsp; 🌐 Transfer: 10 GB/month<br/>
+          👥 Simultaneous connections: 100<br/>
+          💰 Cost: <span style={{color:T.green,fontWeight:800}}>FREE forever</span> for a school
+        </div>
+      </div>
+      <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 16px',fontSize:11,color:T.muted,lineHeight:1.7}}>
+        <span style={{color:T.yellow,fontWeight:800}}>📌 Database Rules for Testing:</span><br/>
+        In Firebase Console → Realtime Database → Rules, paste:<br/>
+        <code style={{color:T.accent,display:'block',marginTop:6,fontSize:11}}>{`{ "rules": { ".read": true, ".write": true } }`}</code>
+        <span style={{color:T.sub,fontSize:10}}>For production, set up proper auth rules.</span>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   LOADING SCREEN
+════════════════════════════════════════ */
+function LoadingScreen(){
+  return<div style={{...SS,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16}}>
+    <div style={{width:72,height:72,borderRadius:20,background:`linear-gradient(135deg,${T.accent},${T.indigo})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,boxShadow:`0 12px 40px ${T.accent}44`}}>📋</div>
+    <div style={{fontSize:24,fontWeight:900,color:T.text}}>EduAttend</div>
+    <div style={{display:'flex',gap:6,marginTop:8}}>
+      {[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:'50%',background:T.accent,animation:`pulse${i} 1.2s ${i*0.2}s ease-in-out infinite`}}/>)}
+    </div>
+    <div style={{fontSize:13,color:T.sub,marginTop:4}}>🔥 Connecting to Firebase…</div>
+    <style>{`
+      @keyframes pulse0{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+      @keyframes pulse1{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+      @keyframes pulse2{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+    `}</style>
+  </div>;
+}
+
+/* ════════════════════════════════════════
+   LOGIN
 ════════════════════════════════════════ */
 function LoginScreen({onLogin}){
   const[uname,setUname]=useState('');
@@ -197,6 +356,7 @@ function LoginScreen({onLogin}){
       <div style={{width:86,height:86,borderRadius:24,background:`linear-gradient(135deg,${T.accent},${T.indigo})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:42,margin:'0 auto 16px',boxShadow:`0 16px 48px ${T.accent}44`}}>📋</div>
       <div style={{fontSize:34,fontWeight:900,color:T.text,letterSpacing:'-1px'}}>EduAttend</div>
       <div style={{fontSize:14,color:T.sub,marginTop:4}}>School Attendance System</div>
+      {FB_CONFIGURED&&<div style={{marginTop:10,fontSize:11,fontWeight:800,color:T.green}}>🔥 Firebase Sync Active</div>}
     </div>
     <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:20,padding:28,width:'100%',maxWidth:380,boxShadow:`0 24px 64px rgba(0,0,0,.5)`}}>
       <Inp label="Username" value={uname} onChange={setUname} placeholder="admin / teacher / principal"/>
@@ -503,21 +663,18 @@ function AdminDashboard({user,classes,setClasses,holidays,setHolidays,attendance
 }
 
 /* ════════════════════════════════════════
-   CHANGE 5 — TEACHER TODAY: local draft + Save button per class
+   TEACHER — TODAY
 ════════════════════════════════════════ */
 function TeacherToday({classes,selectedClass,holidays,attendance,setAttendance}){
   const[date,setDate]=useState(todayKey());
   const hSet=new Set(holidays.map(h=>h.date));
   const isHoliday=hSet.has(date)||isSunday(date);
   const cls=classes.find(c=>c.id===selectedClass);
-
-  /* Local draft state — does NOT auto-save, committed only on Save press */
   const[draftBp,setDraftBp]=useState('');
   const[draftGp,setDraftGp]=useState('');
-  const[dirty,setDirty]=useState(false);   // unsaved changes?
-  const[saved,setSaved]=useState(false);   // just saved toast
+  const[dirty,setDirty]=useState(false);
+  const[saved,setSaved]=useState(false);
 
-  /* Sync draft from stored attendance when class or date changes */
   useEffect(()=>{
     if(!cls){setDraftBp('');setDraftGp('');setDirty(false);setSaved(false);return;}
     const d=attendance[date]?.[cls.id]||{};
@@ -549,7 +706,6 @@ function TeacherToday({classes,selectedClass,holidays,attendance,setAttendance})
   const totP=bpN+gpN,totA=baN+gaN;
   const pct=totS>0?Math.round(totP/totS*100):null;
   const hasData=draftBp!==''||draftGp!=='';
-
   const inputSt=(color)=>({background:T.card2,color,border:`2px solid ${color}66`,borderRadius:10,padding:'8px 4px',fontSize:26,fontWeight:900,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none',textAlign:'center',boxSizing:'border-box'});
   const autoBox=(color,val)=><div style={{background:T.surface,border:`2px solid ${color}33`,borderRadius:10,padding:'8px 4px',fontSize:26,fontWeight:900,color,textAlign:'center',display:'flex',alignItems:'center',justifyContent:'center',minHeight:52}}>{val}</div>;
 
@@ -559,71 +715,44 @@ function TeacherToday({classes,selectedClass,holidays,attendance,setAttendance})
         <label style={{fontSize:11,fontWeight:800,color:T.sub,textTransform:'uppercase',letterSpacing:'0.07em',display:'block',marginBottom:5}}>Date</label>
         <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{background:T.surface,color:T.text,border:`1.5px solid ${T.border2}`,borderRadius:10,padding:'11px 14px',fontSize:14,fontFamily:"'Nunito',sans-serif",width:'100%',outline:'none'}}/>
       </div>
-
       {isHoliday&&<div style={{background:`${T.yellow}18`,border:`1px solid ${T.yellow}44`,borderRadius:12,padding:'14px 18px',textAlign:'center',color:T.yellow,fontWeight:800,fontSize:15}}>
         {isSunday(date)?'🔵 Sunday — No Attendance Required':'🎉 Holiday — School Closed'}
         <div style={{fontSize:12,fontWeight:600,color:T.sub,marginTop:4}}>{holidays.find(h=>h.date===date)?.reason||''}</div>
       </div>}
-
       {!cls&&!isHoliday&&<div style={{textAlign:'center',color:T.muted,padding:'40px 0',fontSize:14}}>Please select a class above.</div>}
-
       {cls&&!isHoliday&&<>
-        {/* Summary strip */}
         <div style={{display:'flex',justifyContent:'space-around',background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:'14px 10px',marginBottom:14}}>
           <Stat value={hasData?totP:'—'} label="PRESENT" color={T.green}/>
           <Stat value={hasData?totA:'—'} label="ABSENT"  color={T.red}/>
           <Stat value={totS}              label="TOTAL"   color={T.text}/>
           <Stat value={hasData&&pct!==null?`${pct}%`:'—'} label="RATE" color={T.yellow}/>
         </div>
-
-        {/* BOYS input card */}
         <div style={{background:T.card,border:`1px solid ${T.accent}44`,borderRadius:16,padding:'14px 16px',marginBottom:12}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
             <span style={{fontSize:15,fontWeight:900,color:T.accent,display:'flex',alignItems:'center',gap:7}}><BoyIcon size={20} color={T.accent}/> Boys</span>
             <Badge color={T.accent}>Strength: {cls.boys}</Badge>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-            <div>
-              <div style={{fontSize:10,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>✏️ Present</div>
-              <input type="number" min="0" max={cls.boys} value={draftBp} placeholder="—" onChange={e=>handleBp(e.target.value)} style={inputSt(T.green)}/>
-            </div>
-            <div>
-              <div style={{fontSize:10,fontWeight:800,color:T.red,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Absent</div>
-              {autoBox(T.red,draftBp!==''?baN:'—')}
-            </div>
-            <div>
-              <div style={{fontSize:10,fontWeight:800,color:T.accent,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Total</div>
-              {autoBox(T.accent,cls.boys)}
-            </div>
+            <div><div style={{fontSize:10,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>✏️ Present</div><input type="number" min="0" max={cls.boys} value={draftBp} placeholder="—" onChange={e=>handleBp(e.target.value)} style={inputSt(T.green)}/></div>
+            <div><div style={{fontSize:10,fontWeight:800,color:T.red,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Absent</div>{autoBox(T.red,draftBp!==''?baN:'—')}</div>
+            <div><div style={{fontSize:10,fontWeight:800,color:T.accent,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Total</div>{autoBox(T.accent,cls.boys)}</div>
           </div>
         </div>
-
-        {/* GIRLS input card */}
         <div style={{background:T.card,border:`1px solid ${T.pink}44`,borderRadius:16,padding:'14px 16px',marginBottom:14}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
             <span style={{fontSize:15,fontWeight:900,color:T.pink,display:'flex',alignItems:'center',gap:7}}><GirlIcon size={20} color={T.pink}/> Girls</span>
             <Badge color={T.pink}>Strength: {cls.girls}</Badge>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-            <div>
-              <div style={{fontSize:10,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>✏️ Present</div>
-              <input type="number" min="0" max={cls.girls} value={draftGp} placeholder="—" onChange={e=>handleGp(e.target.value)} style={inputSt(T.green)}/>
-            </div>
-            <div>
-              <div style={{fontSize:10,fontWeight:800,color:T.red,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Absent</div>
-              {autoBox(T.red,draftGp!==''?gaN:'—')}
-            </div>
-            <div>
-              <div style={{fontSize:10,fontWeight:800,color:T.pink,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Total</div>
-              {autoBox(T.pink,cls.girls)}
-            </div>
+            <div><div style={{fontSize:10,fontWeight:800,color:T.green,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>✏️ Present</div><input type="number" min="0" max={cls.girls} value={draftGp} placeholder="—" onChange={e=>handleGp(e.target.value)} style={inputSt(T.green)}/></div>
+            <div><div style={{fontSize:10,fontWeight:800,color:T.red,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Absent</div>{autoBox(T.red,draftGp!==''?gaN:'—')}</div>
+            <div><div style={{fontSize:10,fontWeight:800,color:T.pink,textTransform:'uppercase',letterSpacing:'0.06em',textAlign:'center',marginBottom:5}}>Total</div>{autoBox(T.pink,cls.girls)}</div>
           </div>
         </div>
-
-        {/* ── SAVE BUTTON (CHANGE 5) ── */}
         {saved
           ?<div style={{background:`${T.green}18`,border:`1px solid ${T.green}55`,borderRadius:14,padding:'14px 18px',textAlign:'center',color:T.green,fontWeight:900,fontSize:16,marginBottom:12}}>
-            ✅ Saved — {cls.name} · {fmtDate(date)}
+            ✅ Saved to Cloud — {cls.name} · {fmtDate(date)}
+            {FB_CONFIGURED&&<div style={{fontSize:11,color:T.sub,fontWeight:700,marginTop:4}}>🔥 Principal & Admin can see this now</div>}
           </div>
           :<div style={{marginBottom:12}}>
             <button onClick={saveAttendance} disabled={!hasData} style={{
@@ -635,14 +764,12 @@ function TeacherToday({classes,selectedClass,holidays,attendance,setAttendance})
               boxShadow:hasData&&dirty?`0 4px 18px ${T.green}44`:'none',
               transition:'all .2s'
             }}>
-              <span style={{fontSize:20}}>💾</span>
-              {dirty?`Save Attendance — ${cls.name}`:`Attendance Saved`}
+              <span style={{fontSize:20}}>{FB_CONFIGURED?'☁️':'💾'}</span>
+              {dirty?`Save${FB_CONFIGURED?' to Cloud':''} — ${cls.name}`:`Attendance Saved`}
             </button>
             {dirty&&<div style={{textAlign:'center',fontSize:11,color:T.yellow,fontWeight:700,marginTop:6}}>⚠ Unsaved changes — tap Save to confirm</div>}
           </div>
         }
-
-        {/* Overall result */}
         {hasData&&(
           <div style={{background:`linear-gradient(135deg,${T.green}12,${T.accent}12)`,border:`1px solid ${T.green}33`,borderRadius:14,padding:'14px 16px'}}>
             <div style={{fontSize:11,fontWeight:800,color:T.sub,marginBottom:10,letterSpacing:'0.05em'}}>OVERALL — {cls.name} · {fmtDate(date)}</div>
@@ -912,16 +1039,47 @@ function PrincipalDashboard({user,classes,holidays,attendance,onLogout}){
 }
 
 /* ════════════════════════════════════════
-   ROOT APP
+   ROOT APP — 🔥 Firebase powered
 ════════════════════════════════════════ */
 function App(){
   const[auth,setAuth]=useState(null);
-  const[classes,   setClasses]   =useLs('edu_classes2',  []);
-  const[holidays,  setHolidays]  =useLs('edu_holidays',  []);
-  const[attendance,setAttendance]=useLs('edu_attend2',   {});
-  const login =(un,u)=>setAuth({un,u});
-  const logout=()=>setAuth(null);
-  if(!auth)return<LoginScreen onLogin={login}/>;
+
+  // 🔥 All three data stores now sync via Firebase (or localStorage fallback)
+  const[classes,    setClasses,    classesReady]    = useStore('edu_classes2',   []);
+  const[holidays,   setHolidays,   holidaysReady]   = useStore('edu_holidays',   []);
+  const[attendance, setAttendance, attendanceReady] = useStore('edu_attend2',    {});
+
+  const allReady = classesReady && holidaysReady && attendanceReady;
+
+  const login  = (un,u) => setAuth({un,u});
+  const logout = () => setAuth(null);
+
+  // Show setup guide if Firebase not configured
+  if (!FB_CONFIGURED) return (
+    <div>
+      <SetupGuide/>
+      {/* Still allow login even without Firebase for demo */}
+      <div style={{position:'fixed',bottom:24,left:0,right:0,display:'flex',justifyContent:'center',zIndex:300}}>
+        {!auth
+          ?<Btn onClick={()=>setAuth({un:'demo',u:USERS.admin})} color={T.indigo}>▶ Try Demo (local only)</Btn>
+          :<Btn onClick={logout} outline color={T.red}>✕ Exit Demo</Btn>
+        }
+      </div>
+      {auth&&(()=>{
+        const{u}=auth;
+        const props={user:u,classes,holidays,attendance,onLogout:logout};
+        if(u.role==='admin')     return<AdminDashboard     {...props} setClasses={setClasses} setHolidays={setHolidays}/>;
+        if(u.role==='teacher')   return<TeacherDashboard   {...props} setAttendance={setAttendance}/>;
+        if(u.role==='principal') return<PrincipalDashboard {...props}/>;
+      })()}
+    </div>
+  );
+
+  // Show loading spinner while Firebase data loads
+  if (!allReady) return <LoadingScreen/>;
+
+  if(!auth) return <LoginScreen onLogin={login}/>;
+
   const{u}=auth;
   const props={user:u,classes,holidays,attendance,onLogout:logout};
   if(u.role==='admin')     return<AdminDashboard     {...props} setClasses={setClasses} setHolidays={setHolidays}/>;
